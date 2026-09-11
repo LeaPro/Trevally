@@ -99,6 +99,7 @@ int main(int argc, char *argv[])
     root = make_shared<RootObject>(&kvs);
     // populate the leaves of the tree
     root->addLeaf<Discovery>("/discovery");
+    root->addLeaf<Bluetooth>("/bluetooth");
     root->addLeaf<Misc>("/misc");
     root->addLeaf<Test>("/test");
     root->addLeaf<Files>("/files");
