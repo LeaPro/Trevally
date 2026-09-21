@@ -1,11 +1,21 @@
 SHELL:=/bin/bash
 
+SOUNDTRACK_DIR=./third_party/splayerapi-v5
+SOUNDTRACK_INC=$(SOUNDTRACK_DIR)/include
+SOUNDTRACK_LIB=$(SOUNDTRACK_DIR)/lib
+
 # use gcc for native builds, else $CC as defined by yocto sdk
 ifndef SDKTARGETSYSROOT
 CC=gcc
 else
 BOOST_INC=$(SDKTARGETSYSROOT)/usr/include
 BOOST_LIB=$(SDKTARGETSYSROOT)/usr/lib
+endif
+
+ifeq ($(findstring aarch64,$(CC)),aarch64)
+SOUNDTRACK_ENABLED=1
+else
+SOUNDTRACK_ENABLED=0
 endif
 
 # ensure that changes to the compiler cause a rebuild (e.g. if user changes the CC environment variable or if yocto sdk sets a different CC than was previously used)
@@ -18,6 +28,9 @@ endif
 # build list of include directories
 INCS=.
 INCS+=./objects
+ifeq ($(SOUNDTRACK_ENABLED),1)
+INCS+=$(SOUNDTRACK_INC)
+endif
 INCS+=$(BOOST_INC)
 INCS+=$(HOME)/LEA/WebsocketAPI/WebsocketServer
 INCS+=$(HOME)/LEA/WebsocketAPI/Objects
@@ -28,6 +41,11 @@ INC=$(INCS:%=-I %) # prefix each include directory with '-I'
 CSRC=$(wildcard *.c)
 CPPSRC=$(wildcard *.cpp)
 CPPSRC+=$(shell find ./objects -type f -name '*.cpp')
+ifeq ($(SOUNDTRACK_ENABLED),1)
+else
+CSRC:=$(filter-out soundtrack_audio_output.c,$(CSRC))
+CPPSRC:=$(filter-out ./objects/Soundtrack.cpp,$(CPPSRC))
+endif
 VPATH+=: ./objects
 CPPSRC+=$(shell find $(HOME)/LEA/WebsocketAPI/WebsocketServer -type f -name '*.cpp')
 VPATH+=: $(HOME)/LEA/WebsocketAPI/WebsocketServer
@@ -50,9 +68,31 @@ BIN=$(OBJDIR)/application-server
 # compiler/linker flags
 COMPFLAGS=-g -pthread -Wno-psabi -O3 -Wno-unused-result
 COMPFLAGS+=-DSAMPLE_RATE=96e3f
+COMPFLAGS+=-DSOUNDTRACK_ENABLED=$(SOUNDTRACK_ENABLED)
+
+# Prefer ALSA backend on target when headers are available in SDK sysroot.
+ifeq ($(SOUNDTRACK_ENABLED),1)
+ifdef SDKTARGETSYSROOT
+ifneq ($(wildcard $(SDKTARGETSYSROOT)/usr/include/alsa/asoundlib.h),)
+COMPFLAGS+=-DSOUNDTRACK_USE_ALSA=1
+else
+$(warning ALSA headers not found in $(SDKTARGETSYSROOT); building Soundtrack with dummy audio backend)
+endif
+endif
+endif
 CPPFLAGS=-x c++ -std=c++1z -DBOOST_BIND_GLOBAL_PLACEHOLDERS -DBOOST_ASIO_USE_TS_EXECUTOR_AS_DEFAULT
 OUTPUT_OPTION=-MMD -MP -o $@
 LDLIBS=-lm -lpthread -lgcc -lstdc++ -lrt -L$(BOOST_LIB) -lboost_system -lboost_filesystem -llmdb -lcrypto -ldl -lcurl
+
+ifeq ($(SOUNDTRACK_ENABLED),1)
+LDLIBS+=-L$(SOUNDTRACK_LIB) -lsplayer-1
+ifdef SDKTARGETSYSROOT
+ifneq ($(wildcard $(SDKTARGETSYSROOT)/usr/include/alsa/asoundlib.h),)
+LDLIBS+=-lasound
+endif
+endif
+LDFLAGS+=-Wl,-rpath,'$$ORIGIN/../third_party/splayerapi-v5/lib'
+endif
 
 # targets and rules 
 .PHONY: default all clean

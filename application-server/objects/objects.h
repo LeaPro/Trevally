@@ -6,3 +6,4 @@
 #include "Misc.h"
 #include "Test.h"
 #include "Files.h"
+#include "Soundtrack.h"

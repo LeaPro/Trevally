@@ -2,3 +2,7 @@
 application-server/obj/
 
 application-server/gpioTool/obj/
+
+application-server/third_party/splayerapi-v5/bin/
+
+application-server/.vscode/

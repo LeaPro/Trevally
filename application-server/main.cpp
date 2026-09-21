@@ -103,6 +103,9 @@ int main(int argc, char *argv[])
     root->addLeaf<Misc>("/misc");
     root->addLeaf<Test>("/test");
     root->addLeaf<Files>("/files");
+    #if SOUNDTRACK_ENABLED
+    root->addLeaf<Soundtrack>("/soundtrack");
+    #endif
     // initialize object hierarchy (includes RootObject::restore())
     root->initialize();
 
