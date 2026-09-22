@@ -30,7 +30,6 @@ Soundtrack::Soundtrack(string path, Object *parent)
   name = "unpair"; elements[name] = unpairPtr = std::make_shared<BoolControl>(path + "/" + name, this, false, false, true);
   name = "play"; elements[name] = playPtr = std::make_shared<BoolControl>(path + "/" + name, this, false, true, true);
   name = "next"; elements[name] = nextPtr = std::make_shared<BoolControl>(path + "/" + name, this, false, false, true);
-  name = "previous"; elements[name] = previousPtr = std::make_shared<BoolControl>(path + "/" + name, this, false, false, true);
 
   name = "playFromSourceId"; elements[name] = playFromSourceIdPtr = std::make_shared<StringControl>(path + "/" + name, this, "", 256, false, true);
   name = "playFromSourceType"; elements[name] = playFromSourceTypePtr = std::make_shared<EnumControl>(path + "/" + name, this, 0, 1, 0, sourceTypeMap, false, true);
@@ -389,15 +388,6 @@ void Soundtrack::handleControls()
       lastErrorPtr->set("Soundtrack next failed");
     }
     nextPtr->set(false);
-  }
-
-  if (previousPtr->isModified() && previousPtr->get())
-  {
-    if (controlsApi->skip_tracks(splayer, -1) != 0)
-    {
-      lastErrorPtr->set("Soundtrack previous failed");
-    }
-    previousPtr->set(false);
   }
 
   if (volumePtr->isModified())

@@ -54,7 +54,6 @@ private:
   std::shared_ptr<BoolControl> unpairPtr;
   std::shared_ptr<BoolControl> playPtr;
   std::shared_ptr<BoolControl> nextPtr;
-  std::shared_ptr<BoolControl> previousPtr;
   std::shared_ptr<StringControl> playFromSourceIdPtr;
   std::shared_ptr<EnumControl> playFromSourceTypePtr;
   std::shared_ptr<BoolControl> playFromNowPtr;
