@@ -497,9 +497,18 @@ static void alsa_set_volume(struct splayer_audio_api* ctx, const int volume) {
       } else {
         // Calculates the correct volume based on min and max
         long new_vol = volume * (max - min) / 100 + min;
-        // Sets the volume for both mixers
-        if ((r = snd_mixer_selem_set_playback_volume_all(mixers[i], new_vol)) < 0) {
-          printf("snd_mixer_selem_set_playback_volume_all %ld failed: %d\n", new_vol, r);
+        int ch;
+        for (ch = 0; ch <= SND_MIXER_SCHN_LAST; ++ch) {
+          snd_mixer_selem_channel_id_t channel = (snd_mixer_selem_channel_id_t)ch;
+          if (!snd_mixer_selem_has_playback_channel(mixers[i], channel)) {
+            continue;
+          }
+
+          r = snd_mixer_selem_set_playback_volume(mixers[i], channel, new_vol);
+          if (r < 0) {
+            printf("snd_mixer_selem_set_playback_volume ch=%d %ld failed: %d (%s)\n",
+                   ch, new_vol, r, snd_strerror(r));
+          }
         }
       }
     }

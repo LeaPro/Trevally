@@ -78,15 +78,26 @@ int main(int argc, char *argv[])
     // create key/value store
     string kvsDirectory = "/tmp/kvs.mdb"; // default
     #ifdef __ARM_ARCH
-    // use data partition if we're running from eMMC
-    if (system("mount | grep -e \"mmcblk0.* on /\"") == 0)
+    // use data partition when the expected eMMC data block device exists
+    if (system("test -b /dev/mmcblk0p4 >/dev/null 2>&1") == 0)
     {
-      printf("Mounting eMMC data partition to /mnt/data\n");
-      system("mkdir -p /mnt/data; mount /dev/mmcblk0p4 /mnt/data");
-      system("mkdir -p /mnt/data/audio-files");
-      system("mkdir -p /mnt/data/image-files");
-      system("mkdir -p /mnt/data/misc-files");
-      kvsDirectory = "/mnt/data/kvs.mdb";
+      if (system("grep -q ' /mnt/data ' /proc/mounts") != 0)
+      {
+        printf("Mounting eMMC data partition to /mnt/data\n");
+        system("mkdir -p /mnt/data >/dev/null 2>&1; mount /dev/mmcblk0p4 /mnt/data >/dev/null 2>&1");
+      }
+
+      if (system("grep -q ' /mnt/data ' /proc/mounts") == 0)
+      {
+        system("mkdir -p /mnt/data/audio-files >/dev/null 2>&1");
+        system("mkdir -p /mnt/data/image-files >/dev/null 2>&1");
+        system("mkdir -p /mnt/data/misc-files >/dev/null 2>&1");
+        kvsDirectory = "/mnt/data/kvs.mdb";
+      }
+      else
+      {
+        printf("Using default KVS directory: %s\n", kvsDirectory.c_str());
+      }
     }
     else
     {

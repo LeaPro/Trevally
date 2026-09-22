@@ -26,10 +26,9 @@ Soundtrack::Soundtrack(string path, Object *parent)
   name = "volume"; elements[name] = volumePtr = std::make_shared<UInt32Control>(path + "/" + name, this, 0, 100, 100, "percent");
 
   name = "pairCode"; elements[name] = pairCodePtr = std::make_shared<StringControl>(path + "/" + name, this, "", 16, false, true);
-  name = "pairNow"; elements[name] = pairNowPtr = std::make_shared<BoolControl>(path + "/" + name, this, false, false, true);
+  name = "pair"; elements[name] = pairPtr = std::make_shared<BoolControl>(path + "/" + name, this, false, false, true);
   name = "unpair"; elements[name] = unpairPtr = std::make_shared<BoolControl>(path + "/" + name, this, false, false, true);
-  name = "play"; elements[name] = playPtr = std::make_shared<BoolControl>(path + "/" + name, this, false, false, true);
-  name = "pause"; elements[name] = pausePtr = std::make_shared<BoolControl>(path + "/" + name, this, false, false, true);
+  name = "play"; elements[name] = playPtr = std::make_shared<BoolControl>(path + "/" + name, this, false, true, true);
   name = "next"; elements[name] = nextPtr = std::make_shared<BoolControl>(path + "/" + name, this, false, false, true);
   name = "previous"; elements[name] = previousPtr = std::make_shared<BoolControl>(path + "/" + name, this, false, false, true);
 
@@ -58,6 +57,8 @@ void Soundtrack::initialize()
 {
   LeafObject::initialize();
   initializeSdk();
+  restorePlayStatePending = true;
+  applyRestoredPlayState();
   syncSensorState();
 }
 
@@ -189,6 +190,7 @@ void Soundtrack::update(bool sensorsOnly, bool refreshVolatileElements)
   api->loop_iteration(splayer);
 
   syncPairingResult();
+  applyRestoredPlayState();
 
   if (sensorsOnly)
   {
@@ -200,115 +202,32 @@ void Soundtrack::update(bool sensorsOnly, bool refreshVolatileElements)
   }
 }
 
-json Soundtrack::processJson(const string &method, json &j, int client)
+void Soundtrack::applyRestoredPlayState()
 {
+  if (!restorePlayStatePending)
+  {
+    return;
+  }
+
   if (!sdkInitialized || splayer == nullptr)
   {
-    throw std::runtime_error("Soundtrack SDK is not initialized");
+    return;
   }
 
-  if (method == "pair")
+  if (authApi->get_auth_status(splayer) != SPLAYER_AUTH_STATUS_PAIRED)
   {
-    if (!j.is_string())
-    {
-      throw std::runtime_error("pair expects string pairing code");
-    }
-    const string code = j.get<string>();
-    if (code.empty())
-    {
-      throw std::runtime_error("pair code cannot be empty");
-    }
-    const int rc = authApi->initiate_pair_with_code(splayer, code.c_str());
-    if (rc != 0)
-    {
-      lastErrorPtr->set("Soundtrack pair initiation failed");
-      return false;
-    }
-    pairCodePtr->set(code);
-    pairNowPtr->set(false);
-    return true;
+    return;
   }
 
-  if (method == "libraryReset")
+  const bool wantsPlay = playPtr->get();
+  const int rc = wantsPlay ? controlsApi->play(splayer) : controlsApi->pause(splayer);
+  if (rc != 0)
   {
-    libraryApi->reset_library(splayer);
-    libraryPtr->set(json::array());
-    return true;
+    lastErrorPtr->set(wantsPlay ? "Soundtrack restore play failed" : "Soundtrack restore pause failed");
+    return;
   }
 
-  if (method == "libraryFetch")
-  {
-    int limit = 50;
-    if (!j.is_null())
-    {
-      if (!j.is_number_integer())
-      {
-        throw std::runtime_error("libraryFetch expects integer limit or null");
-      }
-      limit = std::max(1, std::min(500, j.get<int>()));
-    }
-
-    splayer_library_result_t *result = nullptr;
-    const int rc = libraryApi->fetch_library_sync(splayer, limit, &result);
-    if (rc != 0 || result == nullptr)
-    {
-      lastErrorPtr->set("Soundtrack library fetch failed");
-      return json::array();
-    }
-
-    json output = json::array();
-    const int count = libraryApi->get_result_count(result);
-    for (int i = 0; i < count; ++i)
-    {
-      const splayer_music_source_t *item = libraryApi->get_library_result_item(result, i);
-      if (item == nullptr)
-      {
-        continue;
-      }
-      json row = json::object();
-      row["id"] = libraryApi->get_source_id(item);
-      row["name"] = libraryApi->get_source_name(item);
-      row["type"] = sourceTypeToString(static_cast<int>(libraryApi->get_source_type(item)));
-      row["imageUri"] = libraryApi->get_source_image_uri(item);
-      output.push_back(row);
-    }
-
-    libraryApi->free_library_result(result);
-    libraryPtr->set(output);
-    return output;
-  }
-
-  if (method == "playFrom")
-  {
-    if (!j.is_object())
-    {
-      throw std::runtime_error("playFrom expects object with sourceId and sourceType");
-    }
-
-    if (!j.contains("sourceId") || !j["sourceId"].is_string())
-    {
-      throw std::runtime_error("playFrom.sourceId must be string");
-    }
-
-    const string sourceId = j["sourceId"].get<string>();
-    const string sourceTypeStr = j.value("sourceType", string("playlist"));
-    const int sourceType = sourceTypeFromString(sourceTypeStr);
-    const int playNow = j.value("playNow", true) ? 1 : 0;
-
-    const int rc = libraryApi->set_play_from(splayer, sourceId.c_str(), static_cast<splayer_source_type_t>(sourceType), playNow);
-    if (rc != 0)
-    {
-      lastErrorPtr->set("Soundtrack set_play_from failed");
-      return false;
-    }
-
-    playFromSourceIdPtr->set(sourceId);
-    playFromSourceTypePtr->setEnumValue(sourceType);
-    playFromNowPtr->set(playNow != 0);
-    return true;
-  }
-
-  return LeafObject::processJson(method, j, client);
+  restorePlayStatePending = false;
 }
 
 void Soundtrack::syncSensorState()
@@ -429,7 +348,7 @@ void Soundtrack::syncMetadata()
 
 void Soundtrack::handleControls()
 {
-  if (pairNowPtr->isModified() && pairNowPtr->get())
+  if (pairPtr->isModified() && pairPtr->get())
   {
     const string code = pairCodePtr->get();
     if (!code.empty())
@@ -440,7 +359,7 @@ void Soundtrack::handleControls()
         lastErrorPtr->set("Soundtrack pair initiation failed");
       }
     }
-    pairNowPtr->set(false);
+    pairPtr->set(false);
   }
 
   if (unpairPtr->isModified() && unpairPtr->get())
@@ -449,22 +368,18 @@ void Soundtrack::handleControls()
     unpairPtr->set(false);
   }
 
-  if (playPtr->isModified() && playPtr->get())
+  if (playPtr->isModified())
   {
-    if (controlsApi->play(splayer) != 0)
+    const bool wantsPlay = playPtr->get();
+    const int rc = wantsPlay ? controlsApi->play(splayer) : controlsApi->pause(splayer);
+    if (rc != 0)
     {
-      lastErrorPtr->set("Soundtrack play failed");
+      lastErrorPtr->set(wantsPlay ? "Soundtrack play failed" : "Soundtrack pause failed");
     }
-    playPtr->set(false);
-  }
-
-  if (pausePtr->isModified() && pausePtr->get())
-  {
-    if (controlsApi->pause(splayer) != 0)
+    else
     {
-      lastErrorPtr->set("Soundtrack pause failed");
+      restorePlayStatePending = false;
     }
-    pausePtr->set(false);
   }
 
   if (nextPtr->isModified() && nextPtr->get())

@@ -28,11 +28,11 @@ public:
   void initialize() override;
   using LeafObject::update;
   void update(bool sensorsOnly = false, bool refreshVolatileElements = false) override;
-  json processJson(const std::string &method, json &j, int client = -1) override;
 
 private:
   void initializeSdk();
   void shutdownSdk();
+  void applyRestoredPlayState();
   void syncSensorState();
   void syncPairingResult();
   void syncTroubles();
@@ -50,10 +50,9 @@ private:
   std::shared_ptr<BoolSensor> isPausedPtr;
   std::shared_ptr<UInt32Control> volumePtr;
   std::shared_ptr<StringControl> pairCodePtr;
-  std::shared_ptr<BoolControl> pairNowPtr;
+  std::shared_ptr<BoolControl> pairPtr;
   std::shared_ptr<BoolControl> unpairPtr;
   std::shared_ptr<BoolControl> playPtr;
-  std::shared_ptr<BoolControl> pausePtr;
   std::shared_ptr<BoolControl> nextPtr;
   std::shared_ptr<BoolControl> previousPtr;
   std::shared_ptr<StringControl> playFromSourceIdPtr;
@@ -76,6 +75,7 @@ private:
   splayer_audio_api *audioCallbacks = nullptr;
   splayer_t *splayer = nullptr;
   bool sdkInitialized = false;
+  bool restorePlayStatePending = false;
 };
 #else
 class Soundtrack final : public LeafObject
