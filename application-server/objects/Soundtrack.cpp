@@ -41,10 +41,6 @@ Soundtrack::Soundtrack(string path, Object *parent)
   name = "troubles"; elements[name] = troublesPtr = std::make_shared<JsonSensor>(path + "/" + name, this, json::array());
   name = "lastError"; elements[name] = lastErrorPtr = std::make_shared<StringSensor>(path + "/" + name, this, "", 512);
 
-  methods.insert("pair");
-  methods.insert("libraryFetch");
-  methods.insert("libraryReset");
-  methods.insert("playFrom");
 }
 
 Soundtrack::~Soundtrack()
