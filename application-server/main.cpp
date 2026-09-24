@@ -83,7 +83,6 @@ int main(int argc, char *argv[])
     {
       if (system("grep -q ' /mnt/data ' /proc/mounts") != 0)
       {
-        printf("Mounting eMMC data partition to /mnt/data\n");
         system("mkdir -p /mnt/data >/dev/null 2>&1; mount /dev/mmcblk0p4 /mnt/data >/dev/null 2>&1");
       }
 
@@ -94,15 +93,8 @@ int main(int argc, char *argv[])
         system("mkdir -p /mnt/data/misc-files >/dev/null 2>&1");
         kvsDirectory = "/mnt/data/kvs.mdb";
       }
-      else
-      {
-        printf("Using default KVS directory: %s\n", kvsDirectory.c_str());
-      }
     }
-    else
-    {
-      printf("Using default KVS directory: %s\n", kvsDirectory.c_str());
-    }
+    printf("Using KVS directory %s\n", kvsDirectory.c_str());
     #endif
     KeyValueStore kvs(kvsDirectory);
 
@@ -114,6 +106,7 @@ int main(int argc, char *argv[])
     root->addLeaf<Misc>("/misc");
     root->addLeaf<Test>("/test");
     root->addLeaf<Files>("/files");
+    root->addLeaf<CustomChannels>("/customchannels");
     #if SOUNDTRACK_ENABLED
     root->addLeaf<Soundtrack>("/soundtrack");
     #endif

@@ -7,3 +7,4 @@
 #include "Test.h"
 #include "Files.h"
 #include "Soundtrack.h"
+#include "CustomChannels.h"

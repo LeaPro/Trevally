@@ -25,6 +25,7 @@ Test::Test(string path, Object *parent) : LeafObject(path, parent)
   string name;
   name = "test"; elements[name] = testPtr = std::make_shared<JsonControl>(path + "/" + name, this, json({}));
   name = "testHook"; elements[name] = testHookPtr = std::make_shared<JsonControl>(path + "/" + name, this, json({}), false/*persist*/);
+  name = "foo"; elements[name] = std::make_shared<BoolControl>(path + "/" + name, this, false);
 }
 
 void Test::update(bool sensorsOnly, bool refreshVolatileElements)

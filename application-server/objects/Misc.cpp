@@ -167,29 +167,6 @@ void Misc::update(bool sensorsOnly, bool refreshVolatileElements)
 {
   if (sensorsOnly)
   {
-    static float minSecBetweenUpdates = 1e6f; // minimum time between updates in seconds
-    static float maxSecBetweenUpdates = 0.0f; // maximum time between updates in seconds
-    static Timer updateTimer;
-    static bool firstTime = true;
-    if (firstTime)
-    {
-      firstTime = false;
-    }
-    else
-    {
-      float secSinceLastUpdate = updateTimer.elapsedSec();
-      if (secSinceLastUpdate < minSecBetweenUpdates)
-      {
-        minSecBetweenUpdates = secSinceLastUpdate;
-        printf("New minimum time between updates: %f seconds\n", minSecBetweenUpdates);
-      }
-      if (secSinceLastUpdate > maxSecBetweenUpdates)
-      {
-        maxSecBetweenUpdates = secSinceLastUpdate;
-        printf("New maximum time between updates: %f seconds\n", maxSecBetweenUpdates);
-      }
-    }
-    updateTimer.reset();
   }
   else // non-sensors
   {

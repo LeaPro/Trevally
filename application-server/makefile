@@ -7,15 +7,11 @@ SOUNDTRACK_LIB=$(SOUNDTRACK_DIR)/lib
 # use gcc for native builds, else $CC as defined by yocto sdk
 ifndef SDKTARGETSYSROOT
 CC=gcc
+SOUNDTRACK_ENABLED=0
 else
 BOOST_INC=$(SDKTARGETSYSROOT)/usr/include
 BOOST_LIB=$(SDKTARGETSYSROOT)/usr/lib
-endif
-
-ifeq ($(findstring aarch64,$(CC)),aarch64)
 SOUNDTRACK_ENABLED=1
-else
-SOUNDTRACK_ENABLED=0
 endif
 
 # ensure that changes to the compiler cause a rebuild (e.g. if user changes the CC environment variable or if yocto sdk sets a different CC than was previously used)
@@ -42,8 +38,9 @@ CSRC=$(wildcard *.c)
 CPPSRC=$(wildcard *.cpp)
 CPPSRC+=$(shell find ./objects -type f -name '*.cpp')
 ifeq ($(SOUNDTRACK_ENABLED),1)
+CSRC+=$(SOUNDTRACK_DIR)/src/audio_output_alsa.c
+VPATH+=: $(SOUNDTRACK_DIR)/src
 else
-CSRC:=$(filter-out soundtrack_audio_output.c,$(CSRC))
 CPPSRC:=$(filter-out ./objects/Soundtrack.cpp,$(CPPSRC))
 endif
 VPATH+=: ./objects
@@ -82,7 +79,7 @@ endif
 endif
 CPPFLAGS=-x c++ -std=c++1z -DBOOST_BIND_GLOBAL_PLACEHOLDERS -DBOOST_ASIO_USE_TS_EXECUTOR_AS_DEFAULT
 OUTPUT_OPTION=-MMD -MP -o $@
-LDLIBS=-lm -lpthread -lgcc -lstdc++ -lrt -L$(BOOST_LIB) -lboost_system -lboost_filesystem -llmdb -lcrypto -ldl -lcurl
+LDLIBS=-lm -lpthread -lgcc -lstdc++ -lrt -L$(BOOST_LIB) -lboost_system -lboost_filesystem -llmdb -lssl -lcrypto -ldl -lcurl
 
 ifeq ($(SOUNDTRACK_ENABLED),1)
 LDLIBS+=-L$(SOUNDTRACK_LIB) -lsplayer-1
