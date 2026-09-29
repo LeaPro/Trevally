@@ -17,6 +17,7 @@ Soundtrack::Soundtrack(string path, Object *parent)
     sourceTypeMap({{0, "playlist"}, {1, "schedule"}})
 {
   string name;
+  name = "enabled"; elements[name] = enabledPtr = std::make_shared<BoolControl>(path + "/" + name, this, false);
   name = "sdkReady"; elements[name] = sdkReadyPtr = std::make_shared<BoolSensor>(path + "/" + name, this, false);
   name = "paired"; elements[name] = pairedPtr = std::make_shared<BoolSensor>(path + "/" + name, this, false);
   name = "authStatus"; elements[name] = authStatusPtr = std::make_shared<StringSensor>(path + "/" + name, this, "unknown");
@@ -51,7 +52,11 @@ Soundtrack::~Soundtrack()
 void Soundtrack::initialize()
 {
   LeafObject::initialize();
-  initializeSdk();
+  wasEnabled = enabledPtr->get();
+  if (wasEnabled)
+  {
+    initializeSdk();
+  }
   restorePlayStatePending = true;
   applyRestoredPlayState();
   syncSensorState();
@@ -175,6 +180,33 @@ void Soundtrack::shutdownSdk()
 void Soundtrack::update(bool sensorsOnly, bool refreshVolatileElements)
 {
   (void)refreshVolatileElements;
+
+  const bool nowEnabled = enabledPtr->get();
+
+  if (!nowEnabled)
+  {
+    if (sdkInitialized)
+    {
+      shutdownSdk();
+    }
+    if (playPtr->get())
+    {
+      playPtr->set(false);
+    }
+    isPlayingPtr->set(false);
+    isPausedPtr->set(false);
+    restorePlayStatePending = false;
+    wasEnabled = false;
+    syncSensorState();
+    return;
+  }
+
+  if (!wasEnabled && nowEnabled)
+  {
+    initializeSdk();
+    restorePlayStatePending = playPtr->get();
+  }
+  wasEnabled = nowEnabled;
 
   if (!sdkInitialized || splayer == nullptr)
   {

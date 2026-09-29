@@ -48,6 +48,7 @@ private:
   std::shared_ptr<StringSensor> deviceIdPtr;
   std::shared_ptr<BoolSensor> isPlayingPtr;
   std::shared_ptr<BoolSensor> isPausedPtr;
+  std::shared_ptr<BoolControl> enabledPtr;
   std::shared_ptr<UInt32Control> volumePtr;
   std::shared_ptr<StringControl> pairCodePtr;
   std::shared_ptr<BoolControl> pairPtr;
@@ -75,6 +76,7 @@ private:
   splayer_t *splayer = nullptr;
   bool sdkInitialized = false;
   bool restorePlayStatePending = false;
+  bool wasEnabled = false;
 };
 #else
 class Soundtrack final : public LeafObject
