@@ -23,6 +23,7 @@
 #include <TcpServer.h>
 #include "objects/objects.h"
 #include "gpio.h"
+#include "lvgl_ui.h"
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdint.h>
@@ -112,6 +113,9 @@ int main(int argc, char *argv[])
     #endif
     // initialize object hierarchy (includes RootObject::restore())
     root->initialize();
+
+    // start the LVGL UI thread
+    lvglThreadStart();
 
     // create servers
     WebsocketServer server1(root, io_context, address, port);

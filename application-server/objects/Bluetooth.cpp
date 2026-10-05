@@ -14,10 +14,15 @@ void Bluetooth::update(bool sensorsOnly, bool refreshVolatileElements)
     if (resetPtr != nullptr)
     {
       resetPtr->set(false);
-      // remove paired BT devices 
+      // remove paired BT devices
+#ifndef SDKTARGETSYSROOT
+      system(R"(bluetoothctl paired-devices | awk '{print $2}' | xargs -r -n1 bluetoothctl remove)");
+      system(R"(systemctl restart bluetooth)");
+#else
       system(R"(systemctl stop trevally-bt-agent)");
       system(R"(bluetoothctl devices Paired | awk '{print $2}' | xargs -r -n1 bluetoothctl remove)");
       system(R"(systemctl restart bluetooth trevally-bt-agent)");
+#endif
     }
   }
 }
