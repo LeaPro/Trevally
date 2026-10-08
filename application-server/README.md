@@ -32,21 +32,16 @@ Clone LEA's LVGL fork (with submodules) somewhere alongside this repo:
 git clone --recurse-submodules https://github.com/LeaPro/LEA-LVGL.git ~/LEA/LEA-LVGL
 ```
 
-Configure it with the host/SDL2 defconfig (shipped in this repo), build, and
-install into `~/.local` (no `sudo` required):
+Build and install it into `~/.local` (no `sudo` required) using its own
+build script, which handles the host/SDL2 defconfig, shared-lib build, and
+install in one step:
 
 ```bash
-cd ~/LEA/LEA-LVGL
-cp ~/LEA/Trevally/application-server/lvgl/trevally_host.defconfig .config
-cmake -S . -B build -G Ninja \
-  -DBUILD_SHARED_LIBS=ON -DLV_BUILD_INSTALL=ON \
-  -DCMAKE_INSTALL_PREFIX=$HOME/.local
-cmake --build build -j"$(nproc)"
-cmake --install build
+~/LEA/LEA-LVGL/build.sh
 ```
 
 This installs LVGL's headers to `~/.local/include/lvgl` and
-`liblvgl.so`/`liblvgl_linux.so` to `~/.local/lib`. Re-run these steps
+`liblvgl.so`/`liblvgl_linux.so` to `~/.local/lib`. Re-run this script
 whenever you pull LVGL fork updates.
 
 ### 3. Build application-server
