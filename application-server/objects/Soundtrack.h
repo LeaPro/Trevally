@@ -30,7 +30,7 @@ public:
   void update(bool sensorsOnly = false, bool refreshVolatileElements = false) override;
 
 private:
-  void initializeSdk();
+  bool initializeSdk();
   void shutdownSdk();
   void applyRestoredPlayState();
   void syncSensorState();

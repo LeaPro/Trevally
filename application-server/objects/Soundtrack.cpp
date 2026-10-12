@@ -18,30 +18,28 @@ Soundtrack::Soundtrack(string path, Object *parent)
 {
   string name;
   name = "enabled"; elements[name] = enabledPtr = std::make_shared<BoolControl>(path + "/" + name, this, false);
+  name = "lastError"; elements[name] = lastErrorPtr = std::make_shared<StringSensor>(path + "/" + name, this, "", 512);
+  name = "troubles"; elements[name] = troublesPtr = std::make_shared<JsonSensor>(path + "/" + name, this, json::array());
   name = "sdkReady"; elements[name] = sdkReadyPtr = std::make_shared<BoolSensor>(path + "/" + name, this, false);
+
   name = "paired"; elements[name] = pairedPtr = std::make_shared<BoolSensor>(path + "/" + name, this, false);
   name = "authStatus"; elements[name] = authStatusPtr = std::make_shared<StringSensor>(path + "/" + name, this, "unknown");
   name = "deviceId"; elements[name] = deviceIdPtr = std::make_shared<StringSensor>(path + "/" + name, this, "", 256);
-  name = "isPlaying"; elements[name] = isPlayingPtr = std::make_shared<BoolSensor>(path + "/" + name, this, false);
-  name = "isPaused"; elements[name] = isPausedPtr = std::make_shared<BoolSensor>(path + "/" + name, this, false);
-  name = "volume"; elements[name] = volumePtr = std::make_shared<UInt32Control>(path + "/" + name, this, 0, 100, 100, "percent");
-
   name = "pairCode"; elements[name] = pairCodePtr = std::make_shared<StringControl>(path + "/" + name, this, "", 16, false, true);
   name = "pair"; elements[name] = pairPtr = std::make_shared<BoolControl>(path + "/" + name, this, false, false, true);
   name = "unpair"; elements[name] = unpairPtr = std::make_shared<BoolControl>(path + "/" + name, this, false, false, true);
-  name = "play"; elements[name] = playPtr = std::make_shared<BoolControl>(path + "/" + name, this, false, true, true);
-  name = "next"; elements[name] = nextPtr = std::make_shared<BoolControl>(path + "/" + name, this, false, false, true);
 
+  name = "soundzone"; elements[name] = soundzonePtr = std::make_shared<JsonSensor>(path + "/" + name, this, json::object());
+  name = "library"; elements[name] = libraryPtr = std::make_shared<JsonSensor>(path + "/" + name, this, json::array());
   name = "playFromSourceId"; elements[name] = playFromSourceIdPtr = std::make_shared<StringControl>(path + "/" + name, this, "", 256, false, true);
   name = "playFromSourceType"; elements[name] = playFromSourceTypePtr = std::make_shared<EnumControl>(path + "/" + name, this, 0, 1, 0, sourceTypeMap, false, true);
   name = "playFromNow"; elements[name] = playFromNowPtr = std::make_shared<BoolControl>(path + "/" + name, this, true, false, true);
 
-  name = "soundzone"; elements[name] = soundzonePtr = std::make_shared<JsonSensor>(path + "/" + name, this, json::object());
   name = "currentTrack"; elements[name] = currentTrackPtr = std::make_shared<JsonSensor>(path + "/" + name, this, json::object());
-  name = "library"; elements[name] = libraryPtr = std::make_shared<JsonSensor>(path + "/" + name, this, json::array());
-  name = "troubles"; elements[name] = troublesPtr = std::make_shared<JsonSensor>(path + "/" + name, this, json::array());
-  name = "lastError"; elements[name] = lastErrorPtr = std::make_shared<StringSensor>(path + "/" + name, this, "", 512);
-
+  name = "isPlaying"; elements[name] = isPlayingPtr = std::make_shared<BoolSensor>(path + "/" + name, this, false);
+  name = "play"; elements[name] = playPtr = std::make_shared<BoolControl>(path + "/" + name, this, false, true, true);
+  name = "next"; elements[name] = nextPtr = std::make_shared<BoolControl>(path + "/" + name, this, false, false, true);
+  name = "volume"; elements[name] = volumePtr = std::make_shared<UInt32Control>(path + "/" + name, this, 0, 100, 100, "percent");
 }
 
 Soundtrack::~Soundtrack()
@@ -53,13 +51,7 @@ void Soundtrack::initialize()
 {
   LeafObject::initialize();
   wasEnabled = enabledPtr->get();
-  if (wasEnabled)
-  {
-    initializeSdk();
-  }
-  restorePlayStatePending = true;
-  applyRestoredPlayState();
-  syncSensorState();
+  restorePlayStatePending = wasEnabled && playPtr->get();
 }
 
 extern "C" {
@@ -73,6 +65,11 @@ extern "C" {
 }
 
 namespace {
+bool isNetAudioPlaybackVolumeReady()
+{
+  return std::system("amixer -D net_audio cget name='NetAudio Playback Volume' >/dev/null 2>&1") == 0;
+}
+
 const char *chooseCacheDir()
 {
   if (access("/mnt/data", W_OK) == 0)
@@ -93,11 +90,18 @@ std::string chooseVendorDeviceName()
 }
 }
 
-void Soundtrack::initializeSdk()
+bool Soundtrack::initializeSdk()
 {
   if (sdkInitialized)
   {
-    return;
+    return true;
+  }
+
+  if (!isNetAudioPlaybackVolumeReady())
+  {
+    sdkReadyPtr->set(false);
+    lastErrorPtr->set("Soundtrack waiting for net_audio mixer readiness");
+    return false;
   }
 
   api = &SPLAYER_API;
@@ -109,15 +113,17 @@ void Soundtrack::initializeSdk()
 
   if (controlsApi == nullptr || authApi == nullptr || metadataApi == nullptr || libraryApi == nullptr || troublesApi == nullptr)
   {
+    sdkReadyPtr->set(false);
     lastErrorPtr->set("Soundtrack API module lookup failed");
-    return;
+    return false;
   }
 
   audioCallbacks = audio_api_allocate();
   if (audioCallbacks == nullptr)
   {
+    sdkReadyPtr->set(false);
     lastErrorPtr->set("Soundtrack audio callback allocation failed");
-    return;
+    return false;
   }
 
   splayer_config_t config = {SPLAYER_SDK_VERSION};
@@ -135,13 +141,15 @@ void Soundtrack::initializeSdk()
   const int rc = api->create(config, &splayer);
   if (rc != 0 || splayer == nullptr)
   {
+    sdkReadyPtr->set(false);
     lastErrorPtr->set("Soundtrack SDK create failed");
-    return;
+    return false;
   }
 
   sdkInitialized = true;
   sdkReadyPtr->set(true);
   lastErrorPtr->set("");
+  return true;
 }
 
 void Soundtrack::shutdownSdk()
@@ -189,12 +197,7 @@ void Soundtrack::update(bool sensorsOnly, bool refreshVolatileElements)
     {
       shutdownSdk();
     }
-    if (playPtr->get())
-    {
-      playPtr->set(false);
-    }
     isPlayingPtr->set(false);
-    isPausedPtr->set(false);
     restorePlayStatePending = false;
     wasEnabled = false;
     syncSensorState();
@@ -203,10 +206,21 @@ void Soundtrack::update(bool sensorsOnly, bool refreshVolatileElements)
 
   if (!wasEnabled && nowEnabled)
   {
-    initializeSdk();
     restorePlayStatePending = playPtr->get();
+    if (!initializeSdk())
+    {
+      return;
+    }
   }
   wasEnabled = nowEnabled;
+
+  if (!sdkInitialized)
+  {
+    if (!initializeSdk())
+    {
+      return;
+    }
+  }
 
   if (!sdkInitialized || splayer == nullptr)
   {
@@ -268,7 +282,6 @@ void Soundtrack::syncSensorState()
   authStatusPtr->set(authStatusToString(authStatus));
   pairedPtr->set(authStatus == SPLAYER_AUTH_STATUS_PAIRED);
   isPlayingPtr->set(controlsApi->is_playing(splayer) != 0);
-  isPausedPtr->set(controlsApi->is_paused(splayer) != 0);
 
   const int volume = controlsApi->get_volume(splayer);
   if (volume >= 0 && volume <= 100)
@@ -440,9 +453,6 @@ void Soundtrack::handleControls()
         lastErrorPtr->set("Soundtrack set_play_from failed");
       }
     }
-    playFromSourceIdPtr->isModified();
-    playFromSourceTypePtr->isModified();
-    playFromNowPtr->isModified();
   }
 }
 
