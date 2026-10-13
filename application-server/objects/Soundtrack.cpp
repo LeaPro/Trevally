@@ -302,17 +302,109 @@ void Soundtrack::syncSensorState()
 
   if (libraryApi != nullptr)
   {
-    splayer_music_source_t *source = libraryApi->get_current_source(splayer);
-    json current = json::object();
-    if (source != nullptr)
+    const bool paired = authStatus == SPLAYER_AUTH_STATUS_PAIRED;
+    if (!paired)
     {
-      current["id"] = libraryApi->get_source_id(source) == nullptr ? "" : libraryApi->get_source_id(source);
-      current["name"] = libraryApi->get_source_name(source) == nullptr ? "" : libraryApi->get_source_name(source);
-      current["type"] = sourceTypeToString(static_cast<int>(libraryApi->get_source_type(source)));
-      current["imageUri"] = libraryApi->get_source_image_uri(source) == nullptr ? "" : libraryApi->get_source_image_uri(source);
-      libraryApi->free_source(source);
+      if (wasPaired)
+      {
+        libraryApi->reset_library(splayer);
+      }
+      libraryPtr->set(json::array());
+      currentSourcePtr->set(json::object());
+      wasPaired = false;
+      libraryRefreshNeeded = true;
+      libraryFetchInProgress = false;
+      libraryAccumulated = json::array();
     }
-    currentSourcePtr->set(current);
+    else
+    {
+      if (!wasPaired)
+      {
+        libraryRefreshNeeded = true;
+      }
+      wasPaired = true;
+
+      const splayer_async_status_t status = libraryApi->get_library_status(splayer);
+      if (libraryRefreshNeeded && !libraryFetchInProgress && status == SPLAYER_ASYNC_IDLE)
+      {
+        libraryApi->reset_library(splayer);
+        libraryAccumulated = json::array();
+        if (libraryApi->fetch_library(splayer, 50) == 0)
+        {
+          libraryFetchInProgress = true;
+        }
+      }
+
+      if (libraryFetchInProgress && status == SPLAYER_ASYNC_READY)
+      {
+        splayer_library_result_t *result = nullptr;
+        if (libraryApi->consume_library_result(splayer, &result) == 0 && result != nullptr)
+        {
+          const int count = libraryApi->get_result_count(result);
+          for (int i = 0; i < count; ++i)
+          {
+            const splayer_music_source_t *source = libraryApi->get_library_result_item(result, i);
+            if (source == nullptr)
+            {
+              continue;
+            }
+
+            json entry = json::object();
+            entry["id"] = libraryApi->get_source_id(source) == nullptr ? "" : libraryApi->get_source_id(source);
+            entry["name"] = libraryApi->get_source_name(source) == nullptr ? "" : libraryApi->get_source_name(source);
+            entry["type"] = sourceTypeToString(static_cast<int>(libraryApi->get_source_type(source)));
+            entry["imageUri"] = libraryApi->get_source_image_uri(source) == nullptr ? "" : libraryApi->get_source_image_uri(source);
+            libraryAccumulated.push_back(entry);
+          }
+
+          const bool hasMore = libraryApi->result_has_more(result) != 0;
+          libraryApi->free_library_result(result);
+
+          if (hasMore)
+          {
+            if (libraryApi->fetch_library(splayer, 50) != 0)
+            {
+              libraryFetchInProgress = false;
+              libraryRefreshNeeded = true;
+            }
+          }
+          else
+          {
+            libraryPtr->set(libraryAccumulated);
+            libraryFetchInProgress = false;
+            libraryRefreshNeeded = false;
+          }
+        }
+        else
+        {
+          libraryFetchInProgress = false;
+          libraryRefreshNeeded = true;
+        }
+      }
+      else if (libraryFetchInProgress && status == SPLAYER_ASYNC_ERROR)
+      {
+        splayer_library_result_t *result = nullptr;
+        libraryApi->consume_library_result(splayer, &result);
+        if (result != nullptr)
+        {
+          libraryApi->free_library_result(result);
+        }
+        libraryFetchInProgress = false;
+        libraryRefreshNeeded = true;
+      }
+
+      splayer_music_source_t *source = libraryApi->get_current_source(splayer);
+      json current = json::object();
+      if (source != nullptr)
+      {
+        current["id"] = libraryApi->get_source_id(source) == nullptr ? "" : libraryApi->get_source_id(source);
+        current["name"] = libraryApi->get_source_name(source) == nullptr ? "" : libraryApi->get_source_name(source);
+        current["type"] = sourceTypeToString(static_cast<int>(libraryApi->get_source_type(source)));
+        current["imageUri"] = libraryApi->get_source_image_uri(source) == nullptr ? "" : libraryApi->get_source_image_uri(source);
+        libraryApi->free_source(source);
+      }
+      currentSourcePtr->set(current);
+    }
   }
 
   syncMetadata();
@@ -424,9 +516,12 @@ void Soundtrack::handleControls()
     unpairPtr->set(false);
   }
 
-  if (playPtr->isModified())
+  const bool playModified = playPtr->isModified();
+  const bool wantsPlay = playPtr->get();
+  const bool isPlayingNow = controlsApi->is_playing(splayer) != 0;
+  const bool shouldForcePause = !wantsPlay && isPlayingNow;
+  if (playModified || shouldForcePause)
   {
-    const bool wantsPlay = playPtr->get();
     const int rc = wantsPlay ? controlsApi->play(splayer) : controlsApi->pause(splayer);
     if (rc != 0)
     {

@@ -35,7 +35,7 @@
 4. If `play=false` when Soundtrack is re-enabled, it should stay idle.
 
 ## 4. Pairing
-1. Set `pairCode`.
+1. Set `pairCode` obtained from https://app.soundtrack.io/accounts/QWNjb3VudCwsMWI4ZmoxNHJ5bTgv/zones
 2. Trigger `pair=true`.
 3. Expected result:
    1. `paired=true`
@@ -83,3 +83,5 @@
 2. Only one leaf should be enabled at a time.
 3. If you switch from one leaf to the other, disable the active leaf first, then enable the other leaf.
 4. Keep real credentials and account data out of source comments and committed docs.
+
+[{"id":"Q29sbGVjdGlvbiw2dVBjOHU3RlZiNEZ5NENhZUFRRVVPLDAv","name":"Neon New Wave","type":"playlist","imageUri":"https://i.soundcdn.com/p/500/500/2q1bhbvo6arzajeWtsTrQKkqn4LJSdLags9Kfkj7oT4ZXYKqoDAcdYsrNUiDEx3gZyoatfsDsVSWRiCvhcS55bZxDVXg8VuNbonWkrJR5hWkZcmGd7Lu9sEzpN"},{"id":"Q29sbGVjdGlvbiw0M0t6Y0M4UGQyMGVPMEdWeUxwS2FoLDAv","name":"Pure Hard Rock Energy","type":"playlist","imageUri":"https://i.soundcdn.com/p/500/500/2q1bhbvo6arzajeWtsTrQKkqn4LJSdKH3ADE8gRchabof7SYBHvzBjkqXKs7BK2Fgqskibqp7LzqYD4pnMpC9gjW6qCx8PutX1KA7B5yz7VjZURhh1wAfqNpod"}]

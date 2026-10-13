@@ -78,6 +78,10 @@ private:
   bool sdkInitialized = false;
   bool restorePlayStatePending = false;
   bool wasEnabled = false;
+  bool wasPaired = false;
+  bool libraryRefreshNeeded = true;
+  bool libraryFetchInProgress = false;
+  json libraryAccumulated = json::array();
 };
 #else
 class Soundtrack final : public LeafObject
