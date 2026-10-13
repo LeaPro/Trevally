@@ -59,6 +59,7 @@ private:
   std::shared_ptr<EnumControl> playFromSourceTypePtr;
   std::shared_ptr<BoolControl> playFromNowPtr;
   std::shared_ptr<JsonSensor> soundzonePtr;
+  std::shared_ptr<JsonSensor> currentSourcePtr;
   std::shared_ptr<JsonSensor> currentTrackPtr;
   std::shared_ptr<JsonSensor> libraryPtr;
   std::shared_ptr<JsonSensor> troublesPtr;

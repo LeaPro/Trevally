@@ -35,6 +35,7 @@ Soundtrack::Soundtrack(string path, Object *parent)
   name = "playFromSourceType"; elements[name] = playFromSourceTypePtr = std::make_shared<EnumControl>(path + "/" + name, this, 0, 1, 0, sourceTypeMap, false, true);
   name = "playFromNow"; elements[name] = playFromNowPtr = std::make_shared<BoolControl>(path + "/" + name, this, true, false, true);
 
+  name = "currentSource"; elements[name] = currentSourcePtr = std::make_shared<JsonSensor>(path + "/" + name, this, json::object());
   name = "currentTrack"; elements[name] = currentTrackPtr = std::make_shared<JsonSensor>(path + "/" + name, this, json::object());
   name = "isPlaying"; elements[name] = isPlayingPtr = std::make_shared<BoolSensor>(path + "/" + name, this, false);
   name = "play"; elements[name] = playPtr = std::make_shared<BoolControl>(path + "/" + name, this, false, true, true);
@@ -297,6 +298,21 @@ void Soundtrack::syncSensorState()
     zone["name"] = soundzone->name == nullptr ? "" : soundzone->name;
     soundzonePtr->set(zone);
     authApi->free_soundzone(soundzone);
+  }
+
+  if (libraryApi != nullptr)
+  {
+    splayer_music_source_t *source = libraryApi->get_current_source(splayer);
+    json current = json::object();
+    if (source != nullptr)
+    {
+      current["id"] = libraryApi->get_source_id(source) == nullptr ? "" : libraryApi->get_source_id(source);
+      current["name"] = libraryApi->get_source_name(source) == nullptr ? "" : libraryApi->get_source_name(source);
+      current["type"] = sourceTypeToString(static_cast<int>(libraryApi->get_source_type(source)));
+      current["imageUri"] = libraryApi->get_source_image_uri(source) == nullptr ? "" : libraryApi->get_source_image_uri(source);
+      libraryApi->free_source(source);
+    }
+    currentSourcePtr->set(current);
   }
 
   syncMetadata();

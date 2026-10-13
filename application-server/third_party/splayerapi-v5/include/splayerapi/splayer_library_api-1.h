@@ -88,7 +88,8 @@ struct splayer_library_api {
    * The caller must free the result with `free_library_result()` when done.
    *
    * \param[in]  splayer  Player context.
-   * \param[in]  limit    Maximum number of sources to fetch.
+   * \param[in]  limit    Maximum number of playlists and, separately, of schedules to fetch. A result can therefore
+   *                      hold up to 2 * `limit` sources; use `get_result_count()` for the actual count.
    * \param[out] result   Pointer to the result object (NULL on failure).
    * \return 0 on success, non-zero on failure.
    */
@@ -102,8 +103,8 @@ struct splayer_library_api {
    * Transitions `splayer_async_status_t` from IDLE to PENDING. Poll with `get_library_status()`
    * until READY or ERROR, then call `consume_library_result()` to consume the result.
    *
-   * If called while PENDING, the previous request is cancelled and a new one
-   * is submitted (state goes back to PENDING with the new request).
+   * If called while PENDING, returns an error and the in-flight request continues. Wait for READY or ERROR, or
+   * call `reset_library()` to cancel it.
    *
    * If called while READY or ERROR, returns an error — consume the pending
    * result with `consume_library_result()` first.
@@ -111,7 +112,8 @@ struct splayer_library_api {
    * Call `reset_library()` to cancel any in-flight request or reset pagination to the beginning.
    *
    * \param[in] splayer  Player context.
-   * \param[in] limit    Maximum number of sources to fetch.
+   * \param[in] limit    Maximum number of playlists and, separately, of schedules to fetch. A result can therefore
+   *                     hold up to 2 * `limit` sources; use `get_result_count()` for the actual count.
    * \return 0 on success (request submitted), non-zero on failure.
    */
   err_t (*fetch_library)(splayer_t* splayer, int limit);
@@ -225,6 +227,33 @@ struct splayer_library_api {
    * \return Returns 0 for SUCCESS, otherwise FAILED.
    */
   err_t (*set_play_from)(splayer_t* splayer, const char* source_id, splayer_source_type_t source_type, int play_now);
+
+  /**
+   * \brief Get the music source currently assigned to the sound zone, for display purposes.
+   *
+   * Reads the player's own state, so no library fetch is needed. When a schedule is assigned, the schedule is
+   * returned, not the playlist it is currently playing from.
+   *
+   * Read the fields with the source getters (\ref `get_source_id`, \ref `get_source_name`,
+   * \ref `get_source_type`, \ref `get_source_image_uri`). The name and image uri may be empty shortly after startup
+   * or a source change, until the source details have loaded; call again to pick them up. The id changes whenever the
+   * source changes, so it can be compared between calls to tell when to refresh a display.
+   *
+   * \param[in] splayer SPLAYER API context.
+   * \return A music source, or NULL if the player is not paired, no source is assigned, or the state could not be
+   *         read. You MUST call \ref `free_source` once you are done with the object.
+   */
+  splayer_music_source_t* (*get_current_source)(splayer_t* splayer);
+
+  /**
+   * \brief Free a source returned by \ref `get_current_source`.
+   *
+   * After this call, all string pointers read from the source are invalid. Do not use this on items returned by
+   * \ref `get_library_result_item`; those are owned by their result and freed with \ref `free_library_result`.
+   *
+   * \param[in] source Source to free.
+   */
+  void (*free_source)(splayer_music_source_t* source);
 };
 
 #ifdef __cplusplus
