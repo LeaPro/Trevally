@@ -43,6 +43,7 @@ private:
   int sourceTypeFromString(const std::string &type) const;
 
   std::shared_ptr<BoolSensor> sdkReadyPtr;
+  std::shared_ptr<BoolSensor> websiteReachablePtr;
   std::shared_ptr<BoolSensor> pairedPtr;
   std::shared_ptr<StringSensor> authStatusPtr;
   std::shared_ptr<StringSensor> deviceIdPtr;
@@ -50,6 +51,7 @@ private:
   std::shared_ptr<BoolSensor> isPausedPtr;
   std::shared_ptr<BoolControl> enabledPtr;
   std::shared_ptr<UInt32Control> volumePtr;
+  std::shared_ptr<BoolControl> mutePtr;
   std::shared_ptr<StringControl> pairCodePtr;
   std::shared_ptr<BoolControl> pairPtr;
   std::shared_ptr<BoolControl> unpairPtr;

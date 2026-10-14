@@ -6,7 +6,7 @@
 3. Only one of `Soundtrack` or `CustomChannels` should be enabled at a time.
 
 ## 2. Leaf Controls and Sensors
-1. `enabled` - enable or disable the Soundtrack leaf.
+1. `enable` - enable or disable the Soundtrack leaf.
 2. `sdkReady` - indicates the Soundtrack SDK is initialized.
 3. `paired` - shows whether the account is paired.
 4. `authStatus` - current auth state string.
@@ -29,8 +29,8 @@
 21. `lastError` - last error message.
 
 ## 3. Enable and Disable
-1. Set `enabled=false` to stop Soundtrack and release the shared audio backend.
-2. Set `enabled=true` to reinitialize the SDK.
+1. Set `enable=false` to stop Soundtrack and release the shared audio backend.
+2. Set `enable=true` to reinitialize the SDK.
 3. If `play=true` when Soundtrack is re-enabled, playback should resume after the SDK is ready.
 4. If `play=false` when Soundtrack is re-enabled, it should stay idle.
 
@@ -75,7 +75,7 @@
    3. SDK create failure
    4. Pairing or playback request failure
 3. Recovery:
-   1. Toggle `enabled=false` then `enabled=true` to reset the SDK.
+   1. Toggle `enable=false` then `enable=true` to reset the SDK.
    2. If pairing was lost, repeat the pairing flow.
 
 ## 10. Operational Notes

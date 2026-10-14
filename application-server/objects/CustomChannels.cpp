@@ -1,5 +1,6 @@
 #include "objects.h"
 #include "CustomChannelsClient.h"
+#include <Common.h>
 
 #include <csignal>
 #include <cstdlib>
@@ -42,6 +43,7 @@ namespace {
   constexpr auto autoRefreshInterval = Minutes(20);
   constexpr auto autoChannelsFetchInterval = Minutes(15);
   constexpr auto autoNextRetryDelay = Seconds(1);
+  constexpr auto websiteReachabilityProbeInterval = Seconds(2);
   constexpr uint32_t maxAutoNextFailures = 5;
 
   std::string chooseIdentifier()
@@ -179,9 +181,10 @@ CustomChannels::CustomChannels(string path, Object *parent)
 {
   string name;
 
-  name = "enabled"; elements[name] = enabledPtr = std::make_shared<BoolControl>(path + "/" + name, this, false);
+  name = "enable"; elements[name] = enabledPtr = std::make_shared<BoolControl>(path + "/" + name, this, false);
   name = "status"; elements[name] = statusPtr = std::make_shared<StringSensor>(path + "/" + name, this, "not_configured", 64);
   name = "lastError"; elements[name] = lastErrorPtr = std::make_shared<StringSensor>(path + "/" + name, this, "", 1024);
+  name = "websiteReachable"; elements[name] = websiteReachablePtr = std::make_shared<BoolSensor>(path + "/" + name, this, false);
 
   name = "registerListener"; elements[name] = registerListenerPtr = std::make_shared<BoolControl>(path + "/" + name, this, false, false, true);
   name = "authUrl"; elements[name] = authUrlPtr = std::make_shared<StringSensor>(path + "/" + name, this, "", 1024);
@@ -206,6 +209,7 @@ CustomChannels::CustomChannels(string path, Object *parent)
   name = "play"; elements[name] = playPtr = std::make_shared<BoolControl>(path + "/" + name, this, false, true, true);
   name = "next"; elements[name] = nextPtr = std::make_shared<BoolControl>(path + "/" + name, this, false, false, true);
   name = "volume"; elements[name] = volumePtr = std::make_shared<UInt32Control>(path + "/" + name, this, 0, 100, 100, "percent", true, true);
+  name = "mute"; elements[name] = mutePtr = std::make_shared<BoolControl>(path + "/" + name, this, false, true, true);
 }
 
 CustomChannels::~CustomChannels()
@@ -502,7 +506,12 @@ bool CustomChannels::enqueuePlayNow(bool forceNext, bool fromAutomation)
 {
   const string accessToken = accessTokenPtr->get();
   if (accessToken.empty()) {
-    setError("Access token not available");
+    if (!refreshTokenValuePtr->get().empty()) {
+      pendingBootstrapRefresh = true;
+      setError("Access token not available; attempting token refresh");
+    } else {
+      setError("Access token not available");
+    }
     if (forceNext) {
       nextPtr->set(false);
     }
@@ -624,17 +633,36 @@ void CustomChannels::applyRefreshTokenResponse(const WorkerResponse &response)
     setError(apiMessage.empty() ?
       (response.apiResponse.error.empty() ? "token refresh failed" : response.apiResponse.error) :
       apiMessage);
-    accessTokenPtr->set("");
-    refreshTokenValuePtr->set("");
-    accessExpiresAtPtr->set("");
-    refreshExpiresAtPtr->set("");
-    statusPtr->set("auth_required");
+
+    // Keep existing tokens for transient transport/service failures.
+    // Only force re-auth when the provider explicitly rejects credentials.
+    const bool authRejected = response.apiResponse.transportOk &&
+      (response.apiResponse.httpStatus == 401 || response.apiResponse.httpStatus == 403);
+    if (authRejected) {
+      accessTokenPtr->set("");
+      refreshTokenValuePtr->set("");
+      accessExpiresAtPtr->set("");
+      refreshExpiresAtPtr->set("");
+      statusPtr->set("auth_required");
+      pendingBootstrapRefresh = false;
+    } else {
+      pendingBootstrapRefresh = !refreshTokenValuePtr->get().empty();
+    }
     pendingFetchAfterRefresh = false;
     return;
   }
 
-  accessTokenPtr->set(jsonStringOrEmpty(response.apiResponse.body, "access_token"));
-  refreshTokenValuePtr->set(jsonStringOrEmpty(response.apiResponse.body, "refresh_token"));
+  const string refreshedAccessToken = jsonStringOrEmpty(response.apiResponse.body, "access_token");
+  const string refreshedRefreshToken = jsonStringOrEmpty(response.apiResponse.body, "refresh_token");
+  if (refreshedAccessToken.empty() || refreshedRefreshToken.empty()) {
+    setError("token refresh response missing token fields");
+    pendingBootstrapRefresh = !refreshTokenValuePtr->get().empty();
+    pendingFetchAfterRefresh = false;
+    return;
+  }
+
+  accessTokenPtr->set(refreshedAccessToken);
+  refreshTokenValuePtr->set(refreshedRefreshToken);
   accessExpiresAtPtr->set(jsonStringOrEmpty(response.apiResponse.body, "access_expires_at"));
   refreshExpiresAtPtr->set(jsonStringOrEmpty(response.apiResponse.body, "refresh_expires_at"));
 
@@ -802,26 +830,33 @@ void CustomChannels::update(bool sensorsOnly, bool refreshVolatileElements)
   (void)refreshVolatileElements;
   drainWorkerResponses();
 
+  const bool nowEnabled = enabledPtr->get();
+
   if (sensorsOnly)
   {
-    isPlayingPtr->set(playback != nullptr && playback->isRunning());
+    isPlayingPtr->set(nowEnabled && playback != nullptr && playback->isRunning());
   }
   else // non-sensors
   {
-    const bool nowEnabled = enabledPtr->get();
     if (enabledPtr->isModified() && nowEnabled && !wasEnabled) {
       pendingBootstrapRefresh = true;
       volumeRestorePending = true;
       lastVolumeRestoreAttemptAt = {};
+      consecutiveAutoNextFailures = 0;
+      lastAutoNextAttemptAt = {};
     }
     wasEnabled = nowEnabled;
 
     if (!enabledPtr->get())
     {
+      websiteReachablePtr->set(false);
+      lastWebsiteReachable = false;
+      lastWebsiteReachabilityCheckAt = {};
       cancelPendingWork();
       if (playback != nullptr)
         playback->stop();
       playPtr->set(false);
+      mutePtr->set(false);
       nextPtr->set(false);
       registerListenerPtr->set(false);
       exchangeAuthCodePtr->set(false);
@@ -835,6 +870,9 @@ void CustomChannels::update(bool sensorsOnly, bool refreshVolatileElements)
       nowPlayingPtr->reset();
       isPlayingPtr->reset();
       pendingFetchAfterRefresh = false;
+      pendingBootstrapRefresh = false;
+      consecutiveAutoNextFailures = 0;
+      lastAutoNextAttemptAt = {};
       return;
     }
     if (registerListenerPtr->isModified() && registerListenerPtr->get()) {
@@ -855,6 +893,9 @@ void CustomChannels::update(bool sensorsOnly, bool refreshVolatileElements)
 
     if (playPtr->isModified()) {
       if (playPtr->get()) {
+        // Treat explicit user play as a fresh recovery attempt.
+        consecutiveAutoNextFailures = 0;
+        lastAutoNextAttemptAt = {};
         enqueuePlayNow(false, false);
       } else {
         if (playback != nullptr && !playback->stop()) {
@@ -871,6 +912,11 @@ void CustomChannels::update(bool sensorsOnly, bool refreshVolatileElements)
       volumeRestorePending = true;
       lastVolumeRestoreAttemptAt = {};
     }
+
+    if (mutePtr->isModified()) {
+      volumeRestorePending = true;
+      lastVolumeRestoreAttemptAt = {};
+    }
   }
 
   runAutomation();
@@ -878,12 +924,37 @@ void CustomChannels::update(bool sensorsOnly, bool refreshVolatileElements)
 
 void CustomChannels::runAutomation()
 {
-  if (playback == nullptr) {
+  if (!enabledPtr->get() || playback == nullptr) {
+    websiteReachablePtr->set(false);
+    lastWebsiteReachable = false;
+    lastWebsiteReachabilityCheckAt = {};
     return;
   }
 
   const auto now = Clock::now();
   const bool isRunning = playback->isRunning();
+
+  if (lastWebsiteReachabilityCheckAt.time_since_epoch().count() == 0 ||
+      (now - lastWebsiteReachabilityCheckAt) >= websiteReachabilityProbeInterval) {
+    lastWebsiteReachabilityCheckAt = now;
+    const string probeUrl = apiUrl.empty() ? "https://pro.customchannels.net" : apiUrl;
+    lastWebsiteReachable = isWebsiteReachable(probeUrl);
+    websiteReachablePtr->set(lastWebsiteReachable);
+  }
+
+  if (!lastWebsiteReachable) {
+    if (isRunning) {
+      if (!playback->stop()) {
+        setError("Provider unreachable and playback stop failed");
+      }
+    }
+    if (playPtr->get()) {
+      // Keep play intent latched so automation can resume when connectivity returns.
+      setError("Provider unreachable; waiting for automatic resume");
+    }
+    isPlayingPtr->set(false);
+    return;
+  }
 
   if (volumeRestorePending) {
     if (lastVolumeRestoreAttemptAt.time_since_epoch().count() == 0 ||
@@ -895,10 +966,15 @@ void CustomChannels::runAutomation()
     }
   }
 
-  if (pendingBootstrapRefresh && !refreshTokenValuePtr->get().empty()) {
-    if (!hasPendingOrInFlight(WorkerRequestKind::RefreshToken)) {
-      pendingBootstrapRefresh = false;
-      enqueueRefreshToken(true);
+  const bool hasRefreshToken = !refreshTokenValuePtr->get().empty();
+  const bool hasAccessToken = !accessTokenPtr->get().empty();
+  if ((pendingBootstrapRefresh || (hasRefreshToken && !hasAccessToken)) && hasRefreshToken) {
+    const bool refreshDue = lastRefreshAttemptAt.time_since_epoch().count() == 0 ||
+      (now - lastRefreshAttemptAt) >= Seconds(5);
+    if (refreshDue && !hasPendingOrInFlight(WorkerRequestKind::RefreshToken)) {
+      if (enqueueRefreshToken(true)) {
+        pendingBootstrapRefresh = false;
+      }
     }
   } else if (isAuthenticated()) {
     if (lastRefreshAttemptAt.time_since_epoch().count() == 0 ||
@@ -942,7 +1018,9 @@ void CustomChannels::setError(const string &msg)
 
 bool CustomChannels::setMixerVolume(uint32_t percent)
 {
-  const int normalized = percent > 100 ? 100 : static_cast<int>(percent);
+  const uint32_t requested = percent > 100 ? 100 : percent;
+  const uint32_t effective = mutePtr->get() ? 0U : requested;
+  const int normalized = static_cast<int>(effective);
   const string command =
     "amixer -D net_audio sset 'NetAudio' " + std::to_string(normalized) + "% >/tmp/customchannels-amixer.log 2>&1";
   return std::system(command.c_str()) == 0;

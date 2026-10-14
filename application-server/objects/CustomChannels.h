@@ -95,6 +95,7 @@ private:
   std::shared_ptr<JsonSensor> channelsPtr;
   std::shared_ptr<JsonSensor> nowPlayingPtr;
   std::shared_ptr<BoolSensor> isPlayingPtr;
+  std::shared_ptr<BoolSensor> websiteReachablePtr;
   std::shared_ptr<BoolControl> enabledPtr;
 
   std::shared_ptr<StringControl> redirectUrlPtr;
@@ -112,6 +113,7 @@ private:
   std::shared_ptr<StringControl> accessExpiresAtPtr;
   std::shared_ptr<StringControl> refreshExpiresAtPtr;
   std::shared_ptr<UInt32Control> volumePtr;
+  std::shared_ptr<BoolControl> mutePtr;
   std::shared_ptr<BoolControl> playPtr;
   std::shared_ptr<BoolControl> nextPtr;
 
@@ -131,6 +133,8 @@ private:
   std::chrono::steady_clock::time_point lastChannelsFetchAt{};
   std::chrono::steady_clock::time_point lastAutoNextAttemptAt{};
   std::chrono::steady_clock::time_point lastVolumeRestoreAttemptAt{};
+  std::chrono::steady_clock::time_point lastWebsiteReachabilityCheckAt{};
+  bool lastWebsiteReachable = false;
 
   mutable std::mutex workerMutex;
   std::condition_variable workerCv;

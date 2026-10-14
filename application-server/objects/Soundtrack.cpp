@@ -1,4 +1,5 @@
 #include "objects.h"
+#include <Common.h>
 #include <cassert>
 #include <cstring>
 #include <thread>
@@ -17,10 +18,11 @@ Soundtrack::Soundtrack(string path, Object *parent)
     sourceTypeMap({{0, "playlist"}, {1, "schedule"}})
 {
   string name;
-  name = "enabled"; elements[name] = enabledPtr = std::make_shared<BoolControl>(path + "/" + name, this, false);
+  name = "enable"; elements[name] = enabledPtr = std::make_shared<BoolControl>(path + "/" + name, this, false);
   name = "lastError"; elements[name] = lastErrorPtr = std::make_shared<StringSensor>(path + "/" + name, this, "", 512);
   name = "troubles"; elements[name] = troublesPtr = std::make_shared<JsonSensor>(path + "/" + name, this, json::array());
   name = "sdkReady"; elements[name] = sdkReadyPtr = std::make_shared<BoolSensor>(path + "/" + name, this, false);
+  name = "websiteReachable"; elements[name] = websiteReachablePtr = std::make_shared<BoolSensor>(path + "/" + name, this, false);
 
   name = "paired"; elements[name] = pairedPtr = std::make_shared<BoolSensor>(path + "/" + name, this, false);
   name = "authStatus"; elements[name] = authStatusPtr = std::make_shared<StringSensor>(path + "/" + name, this, "unknown");
@@ -41,6 +43,7 @@ Soundtrack::Soundtrack(string path, Object *parent)
   name = "play"; elements[name] = playPtr = std::make_shared<BoolControl>(path + "/" + name, this, false, true, true);
   name = "next"; elements[name] = nextPtr = std::make_shared<BoolControl>(path + "/" + name, this, false, false, true);
   name = "volume"; elements[name] = volumePtr = std::make_shared<UInt32Control>(path + "/" + name, this, 0, 100, 100, "percent");
+  name = "mute"; elements[name] = mutePtr = std::make_shared<BoolControl>(path + "/" + name, this, false);
 }
 
 Soundtrack::~Soundtrack()
@@ -194,16 +197,21 @@ void Soundtrack::update(bool sensorsOnly, bool refreshVolatileElements)
 
   if (!nowEnabled)
   {
+    websiteReachablePtr->set(false);
     if (sdkInitialized)
     {
       shutdownSdk();
     }
+    playPtr->set(false);
+    mutePtr->set(false);
     isPlayingPtr->set(false);
     restorePlayStatePending = false;
     wasEnabled = false;
     syncSensorState();
     return;
   }
+
+  websiteReachablePtr->set(isWebsiteReachable("https://app.soundtrack.io"));
 
   if (!wasEnabled && nowEnabled)
   {
@@ -285,7 +293,7 @@ void Soundtrack::syncSensorState()
   isPlayingPtr->set(controlsApi->is_playing(splayer) != 0);
 
   const int volume = controlsApi->get_volume(splayer);
-  if (volume >= 0 && volume <= 100)
+  if (volume >= 0 && volume <= 100 && !mutePtr->get())
   {
     volumePtr->set(static_cast<uint32_t>(volume));
   }
@@ -542,10 +550,11 @@ void Soundtrack::handleControls()
     nextPtr->set(false);
   }
 
-  if (volumePtr->isModified())
+  if (volumePtr->isModified() || mutePtr->isModified())
   {
-    const uint32_t volume = volumePtr->get();
-    if (controlsApi->set_volume(splayer, static_cast<int>(volume)) != 0)
+    const uint32_t requestedVolume = volumePtr->get();
+    const uint32_t effectiveVolume = mutePtr->get() ? 0U : requestedVolume;
+    if (controlsApi->set_volume(splayer, static_cast<int>(effectiveVolume)) != 0)
     {
       lastErrorPtr->set("Soundtrack volume set failed");
     }
