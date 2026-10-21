@@ -1,9 +1,11 @@
 #include "lvgl_ui.h"
 
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
-#include <thread>
-#include <unistd.h>
+#include <memory>
+
+#include <boost/asio/steady_timer.hpp>
 
 #include <lvgl.h>
 #include <driver_backends.h>
@@ -42,7 +44,30 @@ static void encoderTestArcEventCb(lv_event_t *e)
   }
 }
 
-static void lvglThreadMain()
+// Runs one LVGL timer/task tick, then reschedules itself on io_context after
+// the delay LVGL itself recommends (lv_timer_handler()'s return value),
+// taking the place of the old dedicated thread's `lv_timer_handler(); usleep();`
+// loop. The timer is kept alive by the shared_ptr captured in its own
+// completion handler, so no separate owner is needed.
+static void scheduleLvglTick(boost::asio::io_context &io_context, std::shared_ptr<boost::asio::steady_timer> timer)
+{
+  uint32_t ms = lv_timer_handler();
+  if (ms == LV_NO_TIMER_READY)
+  {
+    ms = LV_DEF_REFR_PERIOD;
+  }
+  timer->expires_after(std::chrono::milliseconds(ms));
+  timer->async_wait([&io_context, timer](const boost::system::error_code &ec)
+  {
+    if (ec) // timer cancelled, or io_context shutting down
+    {
+      return;
+    }
+    scheduleLvglTick(io_context, timer);
+  });
+}
+
+void lvglUiInit(boost::asio::io_context &io_context)
 {
   lv_init();
 
@@ -103,7 +128,7 @@ static void lvglThreadMain()
 #endif
 
   lv_obj_t *label = lv_label_create(lv_screen_active());
-  lv_label_set_text(label, "Hello LEA");
+  lv_label_set_text(label, "Hello maria");
   lv_obj_align(label, LV_ALIGN_TOP_MID, 0, 20);
 
   // Encoder test widget: lv_arc doesn't auto-join the default group the way
@@ -126,18 +151,6 @@ static void lvglThreadMain()
   lv_group_add_obj(encoderGroup, arc);
   lv_group_set_editing(encoderGroup, true);
 
-  while (true)
-  {
-    uint32_t ms = lv_timer_handler();
-    if (ms == LV_NO_TIMER_READY)
-    {
-      ms = LV_DEF_REFR_PERIOD;
-    }
-    usleep(ms * 1000);
-  }
-}
-
-void lvglThreadStart()
-{
-  std::thread(lvglThreadMain).detach();
+  auto timer = std::make_shared<boost::asio::steady_timer>(io_context);
+  scheduleLvglTick(io_context, timer);
 }

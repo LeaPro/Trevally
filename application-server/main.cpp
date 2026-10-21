@@ -108,14 +108,20 @@ int main(int argc, char *argv[])
     root->addLeaf<Test>("/test");
     root->addLeaf<Files>("/files");
     root->addLeaf<CustomChannels>("/customchannels");
+    root->addLeaf<Screens>("/screens");
+    root->addLeaf<Tiles>("/tiles");
+    root->addLeaf<LeaOutput>("/leaOutput");
+    root->addLeaf<LeaInput>("/leaInput");
+    root->addLeaf<LeaControl>("/leaControl");
+    root->addLeaf<LeaSensor>("/leaSensor");
     #if SOUNDTRACK_ENABLED
     root->addLeaf<Soundtrack>("/soundtrack");
     #endif
     // initialize object hierarchy (includes RootObject::restore())
     root->initialize();
 
-    // start the LVGL UI thread
-    lvglThreadStart();
+    // schedule the LVGL UI's init + timer/task loop onto io_context
+    lvglUiInit(io_context);
 
     // create servers
     WebsocketServer server1(root, io_context, address, port);
