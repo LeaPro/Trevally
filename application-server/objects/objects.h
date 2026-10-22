@@ -14,3 +14,5 @@
 #include "LeaInput.h"
 #include "LeaControl.h"
 #include "LeaSensor.h"
+#include "Appearance.h"
+#include "Themes.h"

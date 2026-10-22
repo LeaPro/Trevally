@@ -11,6 +11,13 @@
 #include <driver_backends.h>
 #include <simulator_settings.h>
 
+#include "ui/components/scroll_pane.h"
+#include "ui/ui_design_tokens.h"
+
+#include <object.h>
+#include <Appearance.h>
+#include <Themes.h>
+
 // Global simulator settings, defined in driver_backends.c. Must be populated
 // (window size, at minimum) before driver_backends_init_backend() is called,
 // otherwise the SDL backend creates a 0x0 display and lv_display_create()
@@ -49,25 +56,48 @@ static void encoderTestArcEventCb(lv_event_t *e)
 // taking the place of the old dedicated thread's `lv_timer_handler(); usleep();`
 // loop. The timer is kept alive by the shared_ptr captured in its own
 // completion handler, so no separate owner is needed.
-static void scheduleLvglTick(boost::asio::io_context &io_context, std::shared_ptr<boost::asio::steady_timer> timer)
+//
+// Also owns live theme-change detection: LeafObject::isModified({elements...})
+// checks (and clears) just the given elements' dirty flags - same global
+// Element::modified mechanism NSTProxy.cpp uses to detect DSP-bound control
+// changes, scoped here to themePtr/configPtr only so unrelated Appearance
+// settings (orientation, units, etc.) don't trigger a theme repaint. Doesn't
+// interfere with the websocket subscription system, which tracks
+// modification per-subscriber in a separate map (Element::modifiedState).
+static void scheduleLvglTick(boost::asio::io_context &io_context, std::shared_ptr<boost::asio::steady_timer> timer,
+                             std::shared_ptr<Appearance> appearance, std::shared_ptr<Themes> themes)
 {
+  bool themeChanged = false;
+  if (appearance && appearance->isModified({appearance->themePtr}))
+  {
+    themeChanged = true;
+  }
+  if (themes && themes->isModified({themes->configPtr}))
+  {
+    themeChanged = true;
+  }
+  if (themeChanged)
+  {
+    ui_design_tokens_refresh();
+  }
+
   uint32_t ms = lv_timer_handler();
   if (ms == LV_NO_TIMER_READY)
   {
     ms = LV_DEF_REFR_PERIOD;
   }
   timer->expires_after(std::chrono::milliseconds(ms));
-  timer->async_wait([&io_context, timer](const boost::system::error_code &ec)
+  timer->async_wait([&io_context, timer, appearance, themes](const boost::system::error_code &ec)
   {
     if (ec) // timer cancelled, or io_context shutting down
     {
       return;
     }
-    scheduleLvglTick(io_context, timer);
+    scheduleLvglTick(io_context, timer, appearance, themes);
   });
 }
 
-void lvglUiInit(boost::asio::io_context &io_context)
+void lvglUiInit(boost::asio::io_context &io_context, std::shared_ptr<RootObject> root)
 {
   lv_init();
 
@@ -151,6 +181,68 @@ void lvglUiInit(boost::asio::io_context &io_context)
   lv_group_add_obj(encoderGroup, arc);
   lv_group_set_editing(encoderGroup, true);
 
+  // Debug/build-up step 2: a single standalone tile was confirmed stable on
+  // real hardware, isolating the earlier "wobbly" rendering bug to
+  // home.cpp's full screen construction rather than the tile component.
+  // Next: exercise a scroll_pane with several mixed-size tiles (the same
+  // flex-wrap row pattern home.cpp used) to see whether that alone
+  // reproduces the wobble, before any header/multi-screen/tab-bar pieces
+  // are added back.
+  auto appearance = std::dynamic_pointer_cast<Appearance>(root->leafFromPath("/appearance"));
+  auto themes = std::dynamic_pointer_cast<Themes>(root->leafFromPath("/themes"));
+  ui_design_tokens_init(appearance, themes);
+
+  // The screen itself is a plain lv_obj and never picks up a theme's
+  // background on its own - without this, the dark palette's near-white
+  // icon/text colors render invisibly against LVGL's default white bg.
+  lv_obj_add_style(lv_screen_active(), ui_theme_get_style_bg(), 0);
+  static const tile_config_t testBlocks[] = {
+    {
+      .type = TILE_TYPE_SENSOR,
+      .size = TILE_SIZE_QUARTER,
+      .subtype = TILE_SUB_NUMBER,
+      .label = "Temp",
+      .value_str = "72",
+      .unit_str = "\xC2\xB0" "F",
+      .bar_fill = 0.6f,
+    },
+    {
+      .type = TILE_TYPE_CONTROL,
+      .size = TILE_SIZE_QUARTER,
+      .subtype = TILE_SUB_NUMBER,
+      .label = "Fan",
+      .value_str = "3",
+      .unit_str = NULL,
+      .bar_fill = 0.3f,
+    },
+    {
+      .type = TILE_TYPE_OUTPUT_VOLUME,
+      .size = TILE_SIZE_HALF,
+      .subtype = TILE_SUB_NUMBER,
+      .label = "Output Volume",
+      .value_str = "42",
+      .unit_str = "%",
+      .bar_fill = 0.5f,
+    },
+  };
+  static scroll_screen_t testScreens[] = {
+    { .tab_label = "Test", .blocks = testBlocks, .num_blocks = 3 },
+  };
+  scroll_pane_props_t testPaneProps = {};
+  testPaneProps.screens = testScreens;
+  testPaneProps.num_screens = 1;
+  testPaneProps.show_tab_bar = false;
+  testPaneProps.pane_w = SCROLL_PAGE_W;
+  testPaneProps.pane_h = 193 + 193; // quarter/quarter row + half row
+  lv_obj_t *testPane = scroll_pane_create(lv_screen_active(), &testPaneProps);
+  lv_obj_set_size(testPane, testPaneProps.pane_w, testPaneProps.pane_h);
+  lv_obj_align(testPane, LV_ALIGN_BOTTOM_MID, 0, -20);
+
+  // Build-up step 3: a standalone themed icon (ui_icon_data[]/ui_icon_create),
+  // placed above the scroll_pane and positioned clear of the test label/arc.
+  lv_obj_t *testIcon = UI_ICON_CREATE_DEFAULT(lv_screen_active(), UI_ICON_VOLUME_UP);
+  lv_obj_align(testIcon, LV_ALIGN_TOP_LEFT, 20, 60);
+
   auto timer = std::make_shared<boost::asio::steady_timer>(io_context);
-  scheduleLvglTick(io_context, timer);
+  scheduleLvglTick(io_context, timer, appearance, themes);
 }

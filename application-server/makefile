@@ -48,6 +48,8 @@ endif
 # build list of include directories
 INCS=.
 INCS+=./objects
+INCS+=./ui
+INCS+=./ui/components
 ifeq ($(SOUNDTRACK_ENABLED),1)
 INCS+=$(SOUNDTRACK_INC)
 endif
@@ -62,6 +64,7 @@ INC=$(INCS:%=-I %) # prefix each include directory with '-I'
 CSRC=$(wildcard *.c)
 CPPSRC=$(wildcard *.cpp)
 CPPSRC+=$(shell find ./objects -type f -name '*.cpp')
+CPPSRC+=$(shell find ./ui -type f -name '*.cpp')
 ifeq ($(SOUNDTRACK_ENABLED),1)
 CSRC+=$(SOUNDTRACK_DIR)/src/audio_output_alsa.c
 VPATH+=: $(SOUNDTRACK_DIR)/src
@@ -69,6 +72,10 @@ else
 CPPSRC:=$(filter-out ./objects/Soundtrack.cpp,$(CPPSRC))
 endif
 VPATH+=: ./objects
+VPATH+=: ./ui
+VPATH+=: ./ui/components
+VPATH+=: ./ui/fonts
+VPATH+=: ./ui/icons
 CPPSRC+=$(shell find $(HOME)/LEA/WebsocketAPI/WebsocketServer -type f -name '*.cpp')
 VPATH+=: $(HOME)/LEA/WebsocketAPI/WebsocketServer
 CPPSRC+=$(shell find $(HOME)/LEA/WebsocketAPI/Objects -type f -name '*.cpp')

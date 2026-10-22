@@ -8,4 +8,7 @@ public:
   void initialize() override { LeafObject::initialize(); }
   using LeafObject::update;
   void update(bool sensorsOnly = false, bool refreshVolatileElements = false) override {}
+
+  std::shared_ptr<JsonControl> configPtr;
+  std::shared_ptr<JsonControl> screenOrderPtr;
 };

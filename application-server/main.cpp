@@ -114,6 +114,8 @@ int main(int argc, char *argv[])
     root->addLeaf<LeaInput>("/leaInput");
     root->addLeaf<LeaControl>("/leaControl");
     root->addLeaf<LeaSensor>("/leaSensor");
+    root->addLeaf<Appearance>("/appearance");
+    root->addLeaf<Themes>("/themes");
     #if SOUNDTRACK_ENABLED
     root->addLeaf<Soundtrack>("/soundtrack");
     #endif
@@ -121,7 +123,7 @@ int main(int argc, char *argv[])
     root->initialize();
 
     // schedule the LVGL UI's init + timer/task loop onto io_context
-    lvglUiInit(io_context);
+    lvglUiInit(io_context, root);
 
     // create servers
     WebsocketServer server1(root, io_context, address, port);

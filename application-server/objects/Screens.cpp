@@ -17,6 +17,6 @@ Screens::Screens(string path, Object *parent) : LeafObject(path, parent)
 {
   methods.insert({"add", "update", "remove"});
   string name;
-  name = "config"; elements[name] = std::make_shared<JsonControl>(path + "/" + name, this, json::object());
-  name = "screenOrder"; elements[name] = std::make_shared<JsonControl>(path + "/" + name, this, json::array());
+  name = "config"; elements[name] = configPtr = std::make_shared<JsonControl>(path + "/" + name, this, json::object());
+  name = "screenOrder"; elements[name] = screenOrderPtr = std::make_shared<JsonControl>(path + "/" + name, this, json::array());
 }
