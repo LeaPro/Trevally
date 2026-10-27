@@ -108,6 +108,9 @@ void Backlight::update(bool sensorsOnly, bool refreshVolatileElements)
     if (isModified({brightnessPtr, timeoutPtr, timeoutSecondsPtr}))
     {
       // a user-initiated change (or the initial restore) always lights the screen
+      // and restarts the inactivity countdown (otherwise enabling the timeout from
+      // the webUI would find the on-device idle time already past the limit)
+      lv_display_trigger_activity(nullptr);
       if (applyPercent(brightnessPtr->get()))
         screenOff = false;
     }
