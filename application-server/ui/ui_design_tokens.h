@@ -31,6 +31,7 @@ LV_FONT_DECLARE(satoshi_medium_20);
 LV_FONT_DECLARE(satoshi_medium_24);
 LV_FONT_DECLARE(satoshi_medium_32);
 LV_FONT_DECLARE(satoshi_medium_48);
+LV_FONT_DECLARE(satoshi_medium_140);
 
 #define OPACITY_BRAND_BG_LIGHT LV_OPA_10
 
@@ -48,7 +49,7 @@ LV_FONT_DECLARE(satoshi_medium_48);
 #define THEME_DARK_BG_TERTIARY    lv_color_hex(0x3A3C40)
 #define THEME_DARK_ICON_PRIMARY   lv_color_hex(0xF5F5F5)
 
-#define THEME_LIGHT_BACKGROUND     lv_color_hex(0xFFFFFF)
+#define THEME_LIGHT_BACKGROUND     lv_color_hex(0xF5F5F5)
 #define THEME_LIGHT_TEXT_PRIMARY   lv_color_hex(0x000000)
 #define THEME_LIGHT_TEXT_SECONDARY lv_color_hex(0x666666)
 #define THEME_LIGHT_BRAND          lv_color_hex(0x4F46E5)

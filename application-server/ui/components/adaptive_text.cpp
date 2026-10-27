@@ -26,18 +26,17 @@ static const lv_anim_t *ui_adaptive_text_get_marquee_anim(void)
     return &s_marquee_anim;
 }
 
-static void ui_adaptive_text_apply(lv_obj_t *label,
-                                   const char *text,
-                                   bool set_text,
-                                   uint8_t max_wrap_lines)
+void ui_adaptive_text_set(lv_obj_t *label,
+                          const char *text,
+                          uint8_t max_wrap_lines)
 {
     if (!label) return;
 
     const char *current = lv_label_get_text(label);
     if (!current) current = "";
 
-    const char *safe = text ? text : current;
-    bool text_changed = set_text && strcmp(current, safe) != 0;
+    const char *safe = text ? text : "";
+    bool text_changed = strcmp(current, safe) != 0;
 
     lv_coord_t width = lv_obj_get_width(label);
     const lv_font_t *font = lv_obj_get_style_text_font(label, LV_PART_MAIN);
@@ -95,17 +94,4 @@ static void ui_adaptive_text_apply(lv_obj_t *label,
     if (text_changed) {
         lv_label_set_text(label, safe);
     }
-}
-
-void ui_adaptive_text_set(lv_obj_t *label,
-                          const char *text,
-                          uint8_t max_wrap_lines)
-{
-    ui_adaptive_text_apply(label, text ? text : "", true, max_wrap_lines);
-}
-
-void ui_adaptive_text_refresh(lv_obj_t *label,
-                              uint8_t max_wrap_lines)
-{
-    ui_adaptive_text_apply(label, NULL, false, max_wrap_lines);
 }

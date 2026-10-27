@@ -95,8 +95,22 @@ int main(int argc, char *argv[])
         kvsDirectory = "/mnt/data/kvs.mdb";
       }
     }
-    printf("Using KVS directory %s\n", kvsDirectory.c_str());
+    #else
+    // host/dev build: keep the store in the user's data dir (a shared /tmp path can be
+    // owned by another user, e.g. after running under sudo, and then fails to open)
+    {
+      const char *xdg = getenv("XDG_DATA_HOME");
+      const char *home = getenv("HOME");
+      string base = (xdg && *xdg) ? string(xdg) : (home && *home) ? string(home) + "/.local/share" : "";
+      if (!base.empty())
+      {
+        boost::system::error_code ec;
+        boost::filesystem::create_directories(base + "/trevally", ec);
+        if (!ec) kvsDirectory = base + "/trevally/kvs.mdb";
+      }
+    }
     #endif
+    printf("Using KVS directory %s\n", kvsDirectory.c_str());
     KeyValueStore kvs(kvsDirectory);
 
     // create the root of the object hierarchy tree 
@@ -105,6 +119,7 @@ int main(int argc, char *argv[])
     root->addLeaf<Discovery>("/discovery");
     root->addLeaf<Bluetooth>("/bluetooth");
     root->addLeaf<Misc>("/misc");
+    root->addLeaf<Ethernet>("/network/ethernet");
     root->addLeaf<Test>("/test");
     root->addLeaf<Files>("/files");
     root->addLeaf<CustomChannels>("/customchannels");
@@ -116,6 +131,7 @@ int main(int argc, char *argv[])
     root->addLeaf<LeaSensor>("/leaSensor");
     root->addLeaf<Appearance>("/appearance");
     root->addLeaf<Themes>("/themes");
+    root->addLeaf<Weather>("/weather");
     #if SOUNDTRACK_ENABLED
     root->addLeaf<Soundtrack>("/soundtrack");
     #endif

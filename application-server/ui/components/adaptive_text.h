@@ -22,13 +22,6 @@ void ui_adaptive_text_set(lv_obj_t *label,
                           const char *text,
                           uint8_t max_wrap_lines);
 
-/*
- * Re-applies adaptive behavior for the label's current text.
- * Useful after layout/size changes without changing text.
- */
-void ui_adaptive_text_refresh(lv_obj_t *label,
-                              uint8_t max_wrap_lines);
-
 #ifdef __cplusplus
 }
 #endif

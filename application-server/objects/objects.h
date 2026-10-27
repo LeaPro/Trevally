@@ -16,3 +16,5 @@
 #include "LeaSensor.h"
 #include "Appearance.h"
 #include "Themes.h"
+#include "Weather.h"
+#include "Network.h"

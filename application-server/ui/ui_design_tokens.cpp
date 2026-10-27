@@ -194,11 +194,13 @@ static void applyTheme(void)
 
   lv_style_set_bg_color(&styleBgSecondary, ui_get_bg_secondary_color());
   lv_style_set_bg_color(&styleBgTertiary, ui_get_bg_tertiary_color());
+  lv_style_set_arc_color(&styleBgTertiary, ui_get_bg_tertiary_color());
 
   lv_color_t brand = ui_get_brand_color();
   lv_style_set_bg_color(&styleBrand, brand);
   lv_style_set_text_color(&styleBrand, brand);
   lv_style_set_border_color(&styleBrand, brand);
+  lv_style_set_arc_color(&styleBrand, brand);
 
   lv_style_set_text_color(&styleTextPrimary, ui_get_text_primary_color());
   lv_style_set_text_color(&styleTextSecondary, ui_get_text_secondary_color());

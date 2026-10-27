@@ -39,10 +39,18 @@ LVGL_EXTRA_CFLAGS=-DLV_USE_HID_ENCODER=1
 endif
 
 # ensure that changes to the compiler cause a rebuild (e.g. if user changes the CC environment variable or if yocto sdk sets a different CC than was previously used)
-ARCH_STAMP := obj/.arch
+# host builds go to obj-host/ so they never wipe the cross-build in obj/
+ifndef OBJDIR
+ifdef SDKTARGETSYSROOT
+OBJDIR=obj
+else
+OBJDIR=obj-host
+endif
+endif
+ARCH_STAMP := $(OBJDIR)/.arch
 PREV_ARCH := $(shell cat $(ARCH_STAMP) 2>/dev/null)
 ifeq ($(filter $(CC),$(PREV_ARCH)),)
-  $(shell rm -rf obj && mkdir -p obj && echo $(CC) > $(ARCH_STAMP))
+  $(shell rm -rf $(OBJDIR) && mkdir -p $(OBJDIR) && echo $(CC) > $(ARCH_STAMP))
 endif
 
 # build list of include directories
@@ -84,7 +92,6 @@ CPPSRC+=$(shell find $(HOME)/LEA/WebsocketAPI/JSON -type f -name '*.cpp')
 VPATH+=: $(HOME)/LEA/WebsocketAPI/JSON
 
 # build list of objects and dependencies
-OBJDIR=obj
 CPPOBJS=$(notdir $(CPPSRC:%.cpp=%.o))         # list of c++ objects sans directories
 CPPOBJ=$(patsubst %, $(OBJDIR)/%, $(CPPOBJS)) # list of c++ objects prefixed with '$(OBJDIR)/'
 COBJS=$(notdir $(CSRC:%.c=%.o))               # list of c objects sans directories

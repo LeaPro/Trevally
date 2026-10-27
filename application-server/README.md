@@ -52,6 +52,6 @@ From this repo, with `SDKTARGETSYSROOT` unset:
 make -j"$(nproc)"
 ```
 
-The resulting binary is `obj/application-server`. The Makefile adds an
+The resulting binary is `obj-host/application-server` (target builds use `obj/`). The Makefile adds an
 rpath pointing at `~/.local/lib`, so it will find the LVGL shared libraries
 at runtime without needing `LD_LIBRARY_PATH` set.
