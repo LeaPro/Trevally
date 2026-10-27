@@ -15,6 +15,7 @@
 #include "LeaControl.h"
 #include "LeaSensor.h"
 #include "Appearance.h"
+#include "Backlight.h"
 #include "Themes.h"
 #include "Weather.h"
 #include "Network.h"

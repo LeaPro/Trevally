@@ -130,6 +130,7 @@ int main(int argc, char *argv[])
     root->addLeaf<LeaControl>("/leaControl");
     root->addLeaf<LeaSensor>("/leaSensor");
     root->addLeaf<Appearance>("/appearance");
+    root->addLeaf<Backlight>("/backlight");
     root->addLeaf<Themes>("/themes");
     root->addLeaf<Weather>("/weather");
     #if SOUNDTRACK_ENABLED
