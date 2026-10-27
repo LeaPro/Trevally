@@ -60,6 +60,10 @@
 1. Trigger `next=true` to skip to the next track.
 2. Set `playFromSourceId`, `playFromSourceType`, and `playFromNow` to select a source.
 3. When `playFromSourceId` is set, Soundtrack applies the requested source selection.
+4. `playFromSourceType` and `playFromSourceId` must match:
+   1. `playlist` requires a playlist ID.
+   2. `schedule` requires a schedule ID.
+5. If a playlist ID is sent with `schedule` (or vice versa), the request may be rejected or appear ignored.
 
 ## 8. Volume
 1. Set `volume` to a value between `0` and `100`.

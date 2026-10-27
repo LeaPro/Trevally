@@ -1022,6 +1022,6 @@ bool CustomChannels::setMixerVolume(uint32_t percent)
   const uint32_t effective = mutePtr->get() ? 0U : requested;
   const int normalized = static_cast<int>(effective);
   const string command =
-    "amixer -D net_audio sset 'NetAudio' " + std::to_string(normalized) + "% >/tmp/customchannels-amixer.log 2>&1";
+    "amixer -D net_audio sset 'NetAudio Playback Volume' " + std::to_string(normalized) + "% >/tmp/customchannels-amixer.log 2>&1";
   return std::system(command.c_str()) == 0;
 }

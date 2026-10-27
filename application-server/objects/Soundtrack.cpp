@@ -101,12 +101,7 @@ bool Soundtrack::initializeSdk()
     return true;
   }
 
-  if (!isNetAudioPlaybackVolumeReady())
-  {
-    sdkReadyPtr->set(false);
-    lastErrorPtr->set("Soundtrack waiting for net_audio mixer readiness");
-    return false;
-  }
+  const bool netAudioControlReadyAtStartup = isNetAudioPlaybackVolumeReady();
 
   api = &SPLAYER_API;
   controlsApi = api->get_controls_api();
@@ -152,7 +147,14 @@ bool Soundtrack::initializeSdk()
 
   sdkInitialized = true;
   sdkReadyPtr->set(true);
-  lastErrorPtr->set("");
+  if (netAudioControlReadyAtStartup || isNetAudioPlaybackVolumeReady())
+  {
+    lastErrorPtr->set("");
+  }
+  else
+  {
+    lastErrorPtr->set("Soundtrack started before net_audio softvol control materialized");
+  }
   return true;
 }
 
@@ -566,12 +568,48 @@ void Soundtrack::handleControls()
     if (!sourceId.empty())
     {
       const int sourceType = playFromSourceTypePtr->getEnumValue();
+      const char *sourceTypeName = sourceTypeToString(sourceType);
+
+      // If the library has been fetched, validate that sourceId matches the selected source type.
+      // This catches a common integration mistake: sending a playlist ID while selecting schedule.
+      bool sourceFoundInLibrary = false;
+      bool sourceTypeMatches = false;
+      for (const auto &entry : libraryAccumulated)
+      {
+        if (!entry.is_object())
+        {
+          continue;
+        }
+        const string id = entry.value("id", "");
+        if (id != sourceId)
+        {
+          continue;
+        }
+        sourceFoundInLibrary = true;
+        sourceTypeMatches = entry.value("type", "") == sourceTypeName;
+        break;
+      }
+
+      if (sourceFoundInLibrary && !sourceTypeMatches)
+      {
+        lastErrorPtr->set("Soundtrack set_play_from rejected: sourceId type does not match playFromSourceType");
+        return;
+      }
+
       const int playNow = playFromNowPtr->get() ? 1 : 0;
       const int rc = libraryApi->set_play_from(splayer, sourceId.c_str(), static_cast<splayer_source_type_t>(sourceType), playNow);
       if (rc != 0)
       {
-        lastErrorPtr->set("Soundtrack set_play_from failed");
+        lastErrorPtr->set("Soundtrack set_play_from failed (check sourceId and playFromSourceType)");
       }
+      else
+      {
+        lastErrorPtr->set("");
+      }
+    }
+    else
+    {
+      lastErrorPtr->set("Soundtrack set_play_from skipped: playFromSourceId is empty");
     }
   }
 }
