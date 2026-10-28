@@ -34,7 +34,7 @@ std::string jsonString(const json &j, const char *key)
 /* Tile rectangles for @p n tiles sharing one screen. */
 std::vector<Rect> layoutFor(size_t n)
 {
-    const int W = SCREEN_W, H = SCREEN_H;
+    const int W = ui_content_w(), H = ui_pane_h();
     const int half = H / 2, third = H / 3, col = W / 2;
 
     std::vector<Rect> r;
@@ -112,7 +112,7 @@ lv_obj_t *screen_create(lv_obj_t *parent, const json &screenConfig)
     lv_obj_t *screen = lv_obj_create(parent);
     lv_obj_remove_style_all(screen);
     lv_obj_set_style_bg_opa(screen, LV_OPA_TRANSP, 0);
-    lv_obj_set_size(screen, SCREEN_W, SCREEN_H);
+    lv_obj_set_size(screen, ui_content_w(), ui_pane_h());
     lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);   /* let swipes reach the pane */
     lv_obj_add_flag(screen, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
 
@@ -126,8 +126,8 @@ lv_obj_t *screen_create(lv_obj_t *parent, const json &screenConfig)
 
         /* Dividers between tiles only: none on the screen's outer edges. */
         int sides = LV_BORDER_SIDE_NONE;
-        if (r.y + r.h < SCREEN_H) sides |= LV_BORDER_SIDE_BOTTOM;
-        if (r.x + r.w < SCREEN_W) sides |= LV_BORDER_SIDE_RIGHT;
+        if (r.y + r.h < ui_pane_h()) sides |= LV_BORDER_SIDE_BOTTOM;
+        if (r.x + r.w < ui_content_w()) sides |= LV_BORDER_SIDE_RIGHT;
         lv_obj_add_style(tile, ui_theme_get_style_border(), 0);
         lv_obj_set_style_border_width(tile, 1, 0);
         lv_obj_set_style_border_side(tile, (lv_border_side_t)sides, 0);

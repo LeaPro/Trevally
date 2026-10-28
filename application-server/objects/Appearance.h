@@ -15,4 +15,5 @@ public:
   std::shared_ptr<StringControl> orientationPtr;
   std::shared_ptr<StringControl> temperatureUnitsPtr;
   std::shared_ptr<StringControl> volumeUnitsPtr;
+  std::shared_ptr<StringControl> levelGaugeStylePtr;   // "anchored", "floating" or "ellipse"
 };

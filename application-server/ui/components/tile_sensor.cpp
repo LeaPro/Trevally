@@ -13,8 +13,8 @@ void tile_sensor_build(lv_obj_t *root, const std::string &name,
                        const std::string &binding, int w, int h)
 {
     (void)binding;
-    const bool tall = h >= 386;
-    const bool wide = w >= 480;
+    const bool tall = h >= ui_pane_h();
+    const bool wide = w >= ui_content_w();
     const int  pad  = tall ? 36 : 16;
 
     TileNumber reading;  /* placeholder: no value yet (fill 0) */

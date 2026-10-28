@@ -175,6 +175,8 @@ static lv_style_t styleTextPrimary;
 static lv_style_t styleTextSecondary;
 static lv_style_t styleBorder;
 static lv_style_t styleIconPrimary;
+static lv_style_t styleBgIconPrimary;
+static lv_style_t styleBgBorder;
 static lv_style_t styleKnobBorder;
 
 // Icon recolor style, applied to lv_image icons (not labels) via
@@ -206,6 +208,8 @@ static void applyTheme(void)
   lv_style_set_text_color(&styleTextSecondary, ui_get_text_secondary_color());
   lv_style_set_border_color(&styleBorder, ui_get_border_color());
   lv_style_set_text_color(&styleIconPrimary, ui_get_icon_primary_color());
+  lv_style_set_bg_color(&styleBgIconPrimary, ui_get_icon_primary_color());
+  lv_style_set_bg_color(&styleBgBorder, ui_get_border_color());
   lv_style_set_border_color(&styleKnobBorder, ui_get_background_color());
   lv_style_set_image_recolor(&styleImageIconPrimary, ui_get_icon_primary_color());
 
@@ -217,6 +221,8 @@ static void applyTheme(void)
   lv_obj_report_style_change(&styleTextSecondary);
   lv_obj_report_style_change(&styleBorder);
   lv_obj_report_style_change(&styleIconPrimary);
+  lv_obj_report_style_change(&styleBgIconPrimary);
+  lv_obj_report_style_change(&styleBgBorder);
   lv_obj_report_style_change(&styleKnobBorder);
   lv_obj_report_style_change(&styleImageIconPrimary);
 }
@@ -259,6 +265,21 @@ lv_style_t *ui_theme_get_style_border(void)
 lv_style_t *ui_theme_get_style_icon_primary(void)
 {
   return &styleIconPrimary;
+}
+
+lv_style_t *ui_theme_get_style_bg_icon_primary(void)
+{
+  return &styleBgIconPrimary;
+}
+
+lv_style_t *ui_theme_get_style_bg_border(void)
+{
+  return &styleBgBorder;
+}
+
+lv_style_t *ui_theme_get_style_image_icon_primary(void)
+{
+  return &styleImageIconPrimary;
 }
 
 lv_style_t *ui_theme_get_style_knob_border(void)
@@ -314,6 +335,8 @@ void ui_design_tokens_init(std::shared_ptr<Appearance> appearance, std::shared_p
   lv_style_init(&styleTextSecondary);
   lv_style_init(&styleBorder);
   lv_style_init(&styleIconPrimary);
+  lv_style_init(&styleBgIconPrimary);
+  lv_style_init(&styleBgBorder);
   lv_style_init(&styleKnobBorder);
 
   lv_style_init(&styleImageIconPrimary);

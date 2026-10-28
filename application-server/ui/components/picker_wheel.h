@@ -91,12 +91,6 @@ extern "C" {
 lv_obj_t* picker_wheel_create(lv_obj_t* parent, const picker_wheel_props_t* props);
 
 /**
- * @brief Destroy the picker wheel component
- * @param picker Picker wheel object returned by picker_wheel_create()
- */
-void picker_wheel_destroy(lv_obj_t* picker);
-
-/**
  * @brief Set the selected item index
  * @param picker Picker wheel object
  * @param index Index of the item to select (0-based)
@@ -118,6 +112,12 @@ int picker_wheel_get_selected(lv_obj_t* picker);
  * @param show_check Show or hide checkmark accessory
  */
 void picker_wheel_update_item_check(lv_obj_t* picker, int index, bool show_check);
+
+/**
+ * @brief Replace an item's secondary text (e.g. a live value)
+ * @note The item must have been created with non-empty secondary_text.
+ */
+void picker_wheel_set_secondary_text(lv_obj_t* picker, int index, const char* text);
 
 void picker_wheel_nudge(lv_obj_t* picker, int delta, bool anim);
 

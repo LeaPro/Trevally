@@ -10,8 +10,6 @@
 #include "lvgl/lvgl.h"
 #include "../ui_design_tokens.h"
 
-#define HEADER_H_PX 56   /* header height and icon slot width (touch target) */
-
 typedef struct {
     bool           show;        /* false: empty slot (its width is still reserved) */
     ui_icon_type_t icon;
@@ -20,10 +18,16 @@ typedef struct {
 } header_slot_t;
 
 /**
- * @brief Create a header across the top of @p parent.
+ * @brief Create a header across the top of @p parent: UI_HEADER_H_PX tall and
+ *        ui_content_w() wide, left-aligned (landscape leaves the streaming panel's column free).
  * @param title  Centre text; NULL or "" leaves the centre empty.
+ * @param font   Font of the centre text.
  */
 lv_obj_t *header_create(lv_obj_t *parent, const header_slot_t &left,
-                        const char *title, const header_slot_t &right);
+                        const char *title, const header_slot_t &right,
+                        const lv_font_t *font = &satoshi_medium_32);
+
+/** Sets the centre text (adaptive: wraps, or scrolls if it doesn't fit on one line). No-op if unchanged. */
+void header_set_title(lv_obj_t *header, const char *title);
 
 #endif /* HEADER_H */

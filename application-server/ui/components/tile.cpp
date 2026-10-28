@@ -246,9 +246,19 @@ void tile_step_number(const std::string &leafPath, const char *elementName, int 
 std::string tile_read_string(const std::string &leafPath, const char *elementName)
 {
     auto element = root->elementFromPath(leafPath + "/" + elementName);
-    if (auto s = dynamic_cast<StringElement *>(element.get()))
-        return s->get();
-    return std::string();
+    if (auto s = dynamic_cast<StringElement *>(element.get())) {
+        std::string value = s->get();
+        if (!value.empty()) return value;
+    }
+    return "-";
+}
+
+bool tile_read_bool(const std::string &leafPath, const char *elementName)
+{
+    auto element = root->elementFromPath(leafPath + "/" + elementName);
+    if (auto b = dynamic_cast<BoolElement *>(element.get()))
+        return b->get();
+    return false;
 }
 
 std::string tile_format_number(float value)

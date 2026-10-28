@@ -19,6 +19,7 @@
  */
 
 #include "picker_wheel.h"
+#include "adaptive_text.h"
 #include "../ui_design_tokens.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,12 +28,14 @@
 #define FONT_PICKER_WHEEL &satoshi_medium_24
 
 // Layout dimensions (using design tokens where applicable)
-// Figma Node 5609:12037 specifies a 480x463px container.
-#define PICKER_WIDTH            480
-#define PICKER_HEIGHT           463
+// Figma Node 5609:12037 specifies a 480x463px container in portrait. The width
+// follows the content area; in landscape the height is capped to the pane
+// height so the picker still fits below the header.
+#define PICKER_WIDTH            ui_content_w()
+#define PICKER_HEIGHT           (ui_is_landscape() ? UI_LANDSCAPE_PANE_H_PX : 463)
 #define ITEM_WIDTH              432
 #define ITEM_HEIGHT             72
-#define ITEM_SPACING            40
+#define ITEM_SPACING            16
 #define ITEM_PITCH              (ITEM_HEIGHT + ITEM_SPACING)
 #define ITEM_RADIUS             8
 #define HIGHLIGHT_BORDER        2
@@ -73,6 +76,7 @@ static void refresh_selected_accent(picker_wheel_data_t* data);
 static void update_fade_gradient(lv_obj_t* canvas, int width, int height, bool top_fade);
 static void create_fade_gradient(lv_obj_t* canvas, int width, int height, bool top_fade, void** out_buf);
 static void theme_changed_cb(lv_event_t* e);
+static void picker_wheel_delete_cb(lv_event_t* e);
 static lv_text_align_t normalize_text_align(lv_text_align_t align);
 static bool accessory_on_left(const picker_wheel_props_t* props);
 static int get_selected_index_from_scroll(const picker_wheel_data_t* data);
@@ -223,29 +227,6 @@ lv_obj_t* picker_wheel_create(lv_obj_t* parent, const picker_wheel_props_t* prop
 }
 
 /**
- * Destroy the picker wheel component
- */
-void picker_wheel_destroy(lv_obj_t* picker) {
-    if (!picker) return;
-    
-    picker_wheel_data_t* data = (picker_wheel_data_t*)lv_obj_get_user_data(picker);
-    if (data) {
-        free(data->top_fade_buf);
-        free(data->bottom_fade_buf);
-        free(data->accessory_objs);
-        free(data->secondary_labels);
-        free(data->primary_labels);
-        free(data->item_rows);
-        if (data->items_copy) {
-            free(data->items_copy);
-        }
-        free(data);
-    }
-    
-    lv_obj_delete(picker);
-}
-
-/**
  * Set the selected item
  */
 void picker_wheel_set_selected(lv_obj_t* picker, int index, bool anim) {
@@ -291,6 +272,20 @@ void picker_wheel_update_item_check(lv_obj_t* picker, int index, bool show_check
         data->accessory_objs[index] = create_item_accessory(data->item_rows[index], data,
                                                             &data->items_copy[index]);
         refresh_item_visuals(data, index, index == data->props.selected_index);
+    }
+}
+
+/**
+ * Replace an item's secondary text. The item must have been created with non-empty secondary text.
+ */
+void picker_wheel_set_secondary_text(lv_obj_t* picker, int index, const char* text) {
+    if (!picker) return;
+
+    picker_wheel_data_t* data = (picker_wheel_data_t*)lv_obj_get_user_data(picker);
+    if (!data || index < 0 || index >= data->props.item_count) return;
+
+    if (data->secondary_labels[index]) {
+        ui_adaptive_text_set(data->secondary_labels[index], text ? text : "", 1);
     }
 }
 
@@ -526,9 +521,9 @@ static void create_picker_item(lv_obj_t* parent, picker_wheel_data_t* data, int 
     if (has_secondary) {
         secondary = lv_label_create(row);
         lv_obj_set_width(secondary, secondary_width);
-        lv_label_set_text(secondary, item->secondary_text);
         lv_obj_set_style_text_font(secondary, FONT_PICKER_WHEEL, 0);
         lv_obj_set_style_text_align(secondary, normalize_text_align(item->secondary_text_align), 0);
+        ui_adaptive_text_set(secondary, item->secondary_text, 1);   // marquee when it doesn't fit
         lv_obj_align(secondary, LV_ALIGN_LEFT_MID, secondary_x, 0);
     }
 
@@ -554,13 +549,9 @@ static void update_fade_gradient(lv_obj_t* canvas, int width, int height, bool t
     
     uint32_t* pixels = (uint32_t*)draw_buf->data;
     
-    // Get current theme background color
+    // Get current theme background color (full RGB: custom themes aren't grayscale)
     lv_color_t bg_color = ui_get_background_color();
-    // Extract RGB components (LVGL color format)
-    uint8_t r = lv_color_brightness(bg_color);  // For grayscale, all channels are same
-    uint8_t g = r;
-    uint8_t b = r;
-    uint32_t bg_rgb = (r << 16) | (g << 8) | b;  // 0x00RRGGBB format
+    uint32_t bg_rgb = ((uint32_t)bg_color.red << 16) | ((uint32_t)bg_color.green << 8) | bg_color.blue;  // 0x00RRGGBB
     
     // Update gradient pixel by pixel with new color
     for (int y = 0; y < height; y++) {
@@ -575,7 +566,7 @@ static void update_fade_gradient(lv_obj_t* canvas, int width, int height, bool t
         }
         
         // Create ARGB8888 pixel value (background color with varying alpha)
-        uint32_t pixel = (alpha << 24) | bg_rgb;  // AARRGGBB format
+        uint32_t pixel = ((uint32_t)alpha << 24) | bg_rgb;  // AARRGGBB format
         
         // Fill the entire row with this pixel
         for (int x = 0; x < width; x++) {
@@ -707,6 +698,27 @@ void picker_wheel_set_press_active(lv_obj_t* picker, bool active) {
 
     data->external_press_active = active;
     refresh_selected_accent(data);
+}
+
+/**
+ * Delete event callback - releases the component data and gradient buffers.
+ * LV_EVENT_DELETE is sent before the children are deleted, which is the point
+ * LVGL expects user-owned resources (such as canvas buffers) to be freed.
+ */
+static void picker_wheel_delete_cb(lv_event_t* e) {
+    lv_obj_t* container = (lv_obj_t *)lv_event_get_target(e);
+    picker_wheel_data_t* data = (picker_wheel_data_t*)lv_obj_get_user_data(container);
+    if (!data) return;
+
+    lv_obj_set_user_data(container, NULL);
+    free(data->top_fade_buf);
+    free(data->bottom_fade_buf);
+    free(data->accessory_objs);
+    free(data->secondary_labels);
+    free(data->primary_labels);
+    free(data->item_rows);
+    free(data->items_copy);
+    free(data);
 }
 
 /**

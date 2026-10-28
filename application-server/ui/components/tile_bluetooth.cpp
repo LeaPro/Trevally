@@ -42,8 +42,8 @@ void tile_bluetooth_build(lv_obj_t *root, const std::string &name,
                           const std::string &binding, int w, int h)
 {
     (void)binding;
-    const bool tall = h >= 386;
-    const bool wide = w >= 480;
+    const bool tall = h >= ui_pane_h();
+    const bool wide = w >= ui_content_w();
     const int  pad  = tall ? 36 : 16;
 
     TileNumber volume = tile_read_number("/bluetooth", "volume");
@@ -95,7 +95,7 @@ static void bluetooth_page_key_cb(lv_event_t *e)
 void tile_bluetooth_open(const std::string &name, const std::string &binding)
 {
     (void)binding;
-    nav_page_t page = nav_page_create();
+    nav_page_t page = nav_screen_create();
 
     const header_slot_t back = {true, UI_ICON_ARROW_BACK, nav_back_cb, nullptr};
     const header_slot_t gear = {true, UI_ICON_SETTINGS, nullptr, nullptr};   /* placeholder */

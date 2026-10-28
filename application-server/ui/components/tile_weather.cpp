@@ -31,9 +31,9 @@ static float jsonNumber(const json &j, const char *key)
 void tile_weather_build(lv_obj_t *tile, const std::string &name,
                         const std::string &binding, int w, int h)
 {
-    const bool tall    = h >= 386;
+    const bool tall    = h >= ui_pane_h();
     const bool compact = h < 193;
-    const bool wide    = w >= 480;
+    const bool wide    = w >= ui_content_w();
     const int  pad     = (tall || wide) ? 36 : 16;
 
     std::string city      = name;

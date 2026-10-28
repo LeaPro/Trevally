@@ -124,8 +124,11 @@ TileNumber tile_read_number(const std::string &leafPath, const char *elementName
 /** Adds @p steps (may be negative) to a numeric element, clamped to its range. */
 void tile_step_number(const std::string &leafPath, const char *elementName, int steps);
 
-/** Reads a string element; empty if missing. */
+/** Reads a string element; "-" if it is missing or empty. */
 std::string tile_read_string(const std::string &leafPath, const char *elementName);
+
+/** Reads a boolean element; false if missing. */
+bool tile_read_bool(const std::string &leafPath, const char *elementName);
 
 /** "50" for whole numbers, "50.5" otherwise. */
 std::string tile_format_number(float value);
