@@ -11,7 +11,9 @@ public:
   using LeafObject::update;
   void update(bool sensorsOnly = false, bool refreshVolatileElements = false) override;
   void factoryReset();
+  void reboot();
 
+  std::shared_ptr<BoolControl> rebootPtr;
   std::shared_ptr<BoolControl> factoryResetPtr;
   std::shared_ptr<BoolControl> ledTestPtr;
 

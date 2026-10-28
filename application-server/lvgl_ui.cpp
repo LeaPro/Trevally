@@ -26,6 +26,7 @@
 
 #include <object.h>
 #include <Appearance.h>
+#include <Misc.h>
 #include <Themes.h>
 #include <Screens.h>
 #include <Tiles.h>
@@ -237,6 +238,7 @@ struct Choice
 
 static std::shared_ptr<Appearance> appearanceLeaf;
 static std::shared_ptr<Themes> themesLeaf;
+static std::shared_ptr<Misc> miscLeaf;
 static std::vector<Choice> appearanceChoices[APPEARANCE_ROW_COUNT];   // only while the page is open
 static lv_obj_t *appearanceList;                                     // only while the page is open
 
@@ -386,24 +388,55 @@ static void settingsRowActivatedCb(int index, void *)
   case SETTINGS_ROW_BRIGHTNESS: openBrightnessPage(); break;
   case SETTINGS_ROW_NETWORK:    openNetworkPage();    break;
   case SETTINGS_ROW_APPEARANCE: openAppearancePage(); break;
+  case SETTINGS_ROW_REBOOT:
+    if (miscLeaf && miscLeaf->rebootPtr)
+      miscLeaf->rebootPtr->set(true);
+    break;
   }
 }
 
+// True while an encoder press that began on the Reboot row is still held there: the row is
+// highlighted in its alternate color, and releasing the press reboots. Turning the encoder
+// moves the selection off the row and cancels it.
+static bool rebootArmed;
+
 // Encoder on the Settings destination: each tick snaps the picker to the next or previous
-// row (no animation), and the
-// release of a press (LV_EVENT_CLICKED) activates the selected row.
+// row (no animation), and the release of a press (LV_EVENT_CLICKED) activates the selected
+// row. Pressing on the Reboot row highlights it; the release only activates it if the
+// highlight is still showing.
 static void settingsEncoderCb(lv_event_t *e)
 {
   lv_obj_t *picker = static_cast<lv_obj_t *>(lv_event_get_user_data(e));
-  if (lv_event_get_code(e) == LV_EVENT_CLICKED)
+  switch (lv_event_get_code(e))
   {
+  case LV_EVENT_PRESSED:
+    rebootArmed = picker_wheel_get_selected(picker) == SETTINGS_ROW_REBOOT;
+    picker_wheel_set_press_active(picker, rebootArmed);
+    break;
+  case LV_EVENT_RELEASED:
+  case LV_EVENT_PRESS_LOST:
+    picker_wheel_set_press_active(picker, false);   // rebootArmed is consumed by CLICKED below
+    break;
+  case LV_EVENT_CLICKED:
+  {
+    const bool armed = rebootArmed;
+    rebootArmed = false;
+    if (picker_wheel_get_selected(picker) == SETTINGS_ROW_REBOOT && !armed)
+      break;   // the highlight was lost before the release
     picker_wheel_click(picker);
+    break;
   }
-  else if (lv_event_get_code(e) == LV_EVENT_KEY)
+  case LV_EVENT_KEY:
   {
+    rebootArmed = false;
+    picker_wheel_set_press_active(picker, false);
     const uint32_t key = lv_event_get_key(e);
     if (key == LV_KEY_RIGHT)     picker_wheel_nudge(picker, 1, false);
     else if (key == LV_KEY_LEFT) picker_wheel_nudge(picker, -1, false);
+    break;
+  }
+  default:
+    break;
   }
 }
 
@@ -511,12 +544,18 @@ static void buildSettings()
   props.item_count         = SETTINGS_ROW_COUNT;
   props.selected_index     = 0;
   props.activated_callback = settingsRowActivatedCb;
+  props.pressed_alt_enabled = true;                    // Reboot highlights in red while pressed
+  props.pressed_alt_index   = SETTINGS_ROW_REBOOT;
+  props.pressed_alt_color   = lv_color_hex(0xE5484D);
   settingsPicker = picker_wheel_create(settingsDest.screen, &props);
   lv_obj_add_event_cb(settingsPicker, [](lv_event_t *) { settingsPicker = nullptr; }, LV_EVENT_DELETE, nullptr);
   lv_obj_align(settingsPicker, LV_ALIGN_TOP_LEFT, 0, UI_HEADER_H_PX);
 
   lv_obj_add_event_cb(settingsDest.focus, settingsEncoderCb, LV_EVENT_KEY,     settingsPicker);
   lv_obj_add_event_cb(settingsDest.focus, settingsEncoderCb, LV_EVENT_CLICKED, settingsPicker);
+  lv_obj_add_event_cb(settingsDest.focus, settingsEncoderCb, LV_EVENT_PRESSED, settingsPicker);
+  lv_obj_add_event_cb(settingsDest.focus, settingsEncoderCb, LV_EVENT_RELEASED, settingsPicker);
+  lv_obj_add_event_cb(settingsDest.focus, settingsEncoderCb, LV_EVENT_PRESS_LOST, settingsPicker);
 }
 
 // Applies a changed orientation: closes any open page, tears down everything whose
@@ -669,6 +708,7 @@ void lvglUiInit(boost::asio::io_context &io_context, std::shared_ptr<RootObject>
   auto tiles = std::dynamic_pointer_cast<Tiles>(root->leafFromPath("/tiles"));
   appearanceLeaf = appearance;
   themesLeaf = themes;
+  miscLeaf = std::dynamic_pointer_cast<Misc>(root->leafFromPath("/misc"));
   ui_design_tokens_init(appearance, themes);
 
   // The screen itself is a plain lv_obj and never picks up a theme's

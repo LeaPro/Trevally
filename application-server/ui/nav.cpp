@@ -41,6 +41,9 @@ nav_page_t nav_screen_create()
     page.focus = lv_obj_create(page.screen);
     lv_obj_remove_style_all(page.focus);
     lv_obj_clear_flag(page.focus, LV_OBJ_FLAG_CLICKABLE);
+    /* A scrollable focus object makes LVGL toggle the group's edit mode on an encoder long press;
+     * leaving edit mode turns rotation into focus navigation, so KEY events stop arriving. */
+    lv_obj_clear_flag(page.focus, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_size(page.focus, 1, 1);
     return page;
 }

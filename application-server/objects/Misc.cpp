@@ -18,6 +18,7 @@ namespace fs = boost::filesystem;
 Misc::Misc(string path, Object *parent) : LeafObject(path, parent)
 {
   string name;
+  name = "reboot"; elements[name] = rebootPtr = std::make_shared<BoolControl>(path + "/" + name, this, false/*default*/, false/*persistent*/);
   name = "factoryReset"; elements[name] = factoryResetPtr = std::make_shared<BoolControl>(path + "/" + name, this, false/*default*/, false/*persistent*/);
   name = "ledTest"; elements[name] = ledTestPtr = std::make_shared<BoolControl>(path + "/" + name, this, false/*default*/, false/*persistent*/);
   class SubscriptionPeriodControl final : public FloatControl
@@ -197,6 +198,14 @@ void Misc::update(bool sensorsOnly, bool refreshVolatileElements)
   }
   else // non-sensors
   {
+    if (rebootPtr->isModified())
+    {
+      if (rebootPtr->get()) // this test effectively bypasses the initial 'set' of the default value (false)
+      {
+        printf("Reboot Initiated\n"); fflush(stdout);
+        reboot();
+      }
+    }
     if (factoryResetPtr->isModified())
     {
       if (factoryResetPtr->get()) // this test effectively bypasses the initial 'set' of the default value (false)
@@ -223,6 +232,17 @@ void Misc::update(bool sensorsOnly, bool refreshVolatileElements)
       }
     }
   }
+}
+
+void Misc::reboot()
+{
+  printf("Reboot: rebooting (settings preserved)\n"); fflush(stdout);
+  #ifdef __ARM_ARCH
+  sync();
+  system("reboot");
+  #else
+  printf("Reboot: skipping reboot on host build\n"); fflush(stdout);
+  #endif
 }
 
 void Misc::factoryReset()
