@@ -140,6 +140,10 @@ struct splayer_auth_api {
    * \brief Unpair player from the currently paired soundzone.
    * This will make an attempt to unpair the soundzone, if the network requests fails the player will still forget
    * its pairing information and be available for pairing again but the soundzone will appear as still paired.
+   * \note This call is a deferred request: it only schedules the unpair and returns before it has completed. Pairing
+   * immediately afterwards can therefore fail with T_FAIL_ALREADY_PAIRED. To re-pair, poll get_auth_status until it
+   * returns SPLAYER_AUTH_STATUS_NOT_PAIRED before calling pair_with_code_sync or initiate_pair_with_code, or use
+   * unpair_sync instead. Calling it on a player that is not paired does nothing.
    */
   void (*unpair)(splayer_t* splayer);
 
@@ -165,6 +169,21 @@ struct splayer_auth_api {
    * pairing action, please use 'get_pairing_result'.
    */
   splayer_auth_status_t (*get_auth_status)(splayer_t* splayer);
+
+  /**
+   * \brief Unpair player from the currently paired sound zone and await the result.
+   * This is a convenience function that combines unpair and get_auth_status until it returns
+   * SPLAYER_AUTH_STATUS_NOT_PAIRED.
+   * See unpair and get_auth_status for more information.
+   * \param[in] splayer SPLAYER API context.
+   * \return Returns 0 when the player is unpaired and ready to be paired again, including when it was not paired to
+   * begin with, otherwise non-zero.
+   * \note It is safe to call this function repeatedly. If the call times out, the unpair keeps running in the
+   * background; calling unpair_sync again waits for it to complete.
+   * \note If the SDK shuts down before the unpair has completed, the player may still be paired after a restart.
+   * Check get_auth_status at startup and unpair again if needed.
+   */
+  err_t (*unpair_sync)(splayer_t* splayer);
 };
 
 #ifdef __cplusplus

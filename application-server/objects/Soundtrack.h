@@ -30,7 +30,7 @@ public:
   void update(bool sensorsOnly = false, bool refreshVolatileElements = false) override;
 
 private:
-  void initializeSdk();
+  bool initializeSdk();
   void shutdownSdk();
   void applyRestoredPlayState();
   void syncSensorState();
@@ -43,6 +43,7 @@ private:
   int sourceTypeFromString(const std::string &type) const;
 
   std::shared_ptr<BoolSensor> sdkReadyPtr;
+  std::shared_ptr<BoolSensor> websiteReachablePtr;
   std::shared_ptr<BoolSensor> pairedPtr;
   std::shared_ptr<StringSensor> authStatusPtr;
   std::shared_ptr<StringSensor> deviceIdPtr;
@@ -50,6 +51,7 @@ private:
   std::shared_ptr<BoolSensor> isPausedPtr;
   std::shared_ptr<BoolControl> enabledPtr;
   std::shared_ptr<UInt32Control> volumePtr;
+  std::shared_ptr<BoolControl> mutePtr;
   std::shared_ptr<StringControl> pairCodePtr;
   std::shared_ptr<BoolControl> pairPtr;
   std::shared_ptr<BoolControl> unpairPtr;
@@ -59,6 +61,7 @@ private:
   std::shared_ptr<EnumControl> playFromSourceTypePtr;
   std::shared_ptr<BoolControl> playFromNowPtr;
   std::shared_ptr<JsonSensor> soundzonePtr;
+  std::shared_ptr<JsonSensor> currentSourcePtr;
   std::shared_ptr<JsonSensor> currentTrackPtr;
   std::shared_ptr<JsonSensor> libraryPtr;
   std::shared_ptr<JsonSensor> troublesPtr;
@@ -77,6 +80,10 @@ private:
   bool sdkInitialized = false;
   bool restorePlayStatePending = false;
   bool wasEnabled = false;
+  bool wasPaired = false;
+  bool libraryRefreshNeeded = true;
+  bool libraryFetchInProgress = false;
+  json libraryAccumulated = json::array();
 };
 #else
 class Soundtrack final : public LeafObject

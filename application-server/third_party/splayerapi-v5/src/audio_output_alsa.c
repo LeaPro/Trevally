@@ -91,7 +91,7 @@ static void alsa_init(struct splayer_audio_api* ctx, const int output_sample_cha
 
   this->inited = 1;
   // Match the simple control name exposed by amixer on target.
-  sprintf(this->volume_master_name, "NetAudio");
+  sprintf(this->volume_master_name, "NetAudio Playback Volume");
   this->volume_pcm_name[0] = '\0';
 
   // IMPORTANT: The device name dictates which card ALSA should use and the configuration as which alsa-lib will open

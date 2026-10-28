@@ -7,6 +7,7 @@
 #include <boost/beast/http.hpp>
 #include <boost/beast/ssl.hpp>
 #include <boost/beast/version.hpp>
+#include <chrono>
 
 using std::string;
 
@@ -177,6 +178,7 @@ CustomChannelsClient::Response CustomChannelsClient::postJson(
   namespace net = boost::asio;
   namespace ssl = net::ssl;
   using tcp = net::ip::tcp;
+  const auto requestTimeout = std::chrono::seconds(5);
 
   try {
     net::io_context ioc;
@@ -206,12 +208,16 @@ CustomChannelsClient::Response CustomChannelsClient::postJson(
       }
 
       auto const results = resolver.resolve(host, port);
+      beast::get_lowest_layer(stream).expires_after(requestTimeout);
       beast::get_lowest_layer(stream).connect(results);
+      beast::get_lowest_layer(stream).expires_after(requestTimeout);
       stream.handshake(ssl::stream_base::client);
+      beast::get_lowest_layer(stream).expires_after(requestTimeout);
       http::write(stream, req);
 
       beast::flat_buffer buffer;
       http::response<http::string_body> res;
+      beast::get_lowest_layer(stream).expires_after(requestTimeout);
       http::read(stream, buffer, res);
 
       out.transportOk = true;
@@ -226,12 +232,15 @@ CustomChannelsClient::Response CustomChannelsClient::postJson(
       tcp::resolver resolver(ioc);
       beast::tcp_stream stream(ioc);
       auto const results = resolver.resolve(host, port);
+      stream.expires_after(requestTimeout);
       stream.connect(results);
 
+      stream.expires_after(requestTimeout);
       http::write(stream, req);
 
       beast::flat_buffer buffer;
       http::response<http::string_body> res;
+      stream.expires_after(requestTimeout);
       http::read(stream, buffer, res);
 
       out.transportOk = true;

@@ -6,7 +6,7 @@
 3. Only one of `Soundtrack` or `CustomChannels` should be enabled at a time.
 
 ## 2. Leaf Controls and Sensors
-1. `enabled` - enable or disable the Soundtrack leaf.
+1. `enable` - enable or disable the Soundtrack leaf.
 2. `sdkReady` - indicates the Soundtrack SDK is initialized.
 3. `paired` - shows whether the account is paired.
 4. `authStatus` - current auth state string.
@@ -29,13 +29,13 @@
 21. `lastError` - last error message.
 
 ## 3. Enable and Disable
-1. Set `enabled=false` to stop Soundtrack and release the shared audio backend.
-2. Set `enabled=true` to reinitialize the SDK.
+1. Set `enable=false` to stop Soundtrack and release the shared audio backend.
+2. Set `enable=true` to reinitialize the SDK.
 3. If `play=true` when Soundtrack is re-enabled, playback should resume after the SDK is ready.
 4. If `play=false` when Soundtrack is re-enabled, it should stay idle.
 
 ## 4. Pairing
-1. Set `pairCode`.
+1. Set `pairCode` obtained from https://app.soundtrack.io/accounts/QWNjb3VudCwsMWI4ZmoxNHJ5bTgv/zones
 2. Trigger `pair=true`.
 3. Expected result:
    1. `paired=true`
@@ -60,6 +60,10 @@
 1. Trigger `next=true` to skip to the next track.
 2. Set `playFromSourceId`, `playFromSourceType`, and `playFromNow` to select a source.
 3. When `playFromSourceId` is set, Soundtrack applies the requested source selection.
+4. `playFromSourceType` and `playFromSourceId` must match:
+   1. `playlist` requires a playlist ID.
+   2. `schedule` requires a schedule ID.
+5. If a playlist ID is sent with `schedule` (or vice versa), the request may be rejected or appear ignored.
 
 ## 8. Volume
 1. Set `volume` to a value between `0` and `100`.
@@ -75,7 +79,7 @@
    3. SDK create failure
    4. Pairing or playback request failure
 3. Recovery:
-   1. Toggle `enabled=false` then `enabled=true` to reset the SDK.
+   1. Toggle `enable=false` then `enable=true` to reset the SDK.
    2. If pairing was lost, repeat the pairing flow.
 
 ## 10. Operational Notes
@@ -83,3 +87,5 @@
 2. Only one leaf should be enabled at a time.
 3. If you switch from one leaf to the other, disable the active leaf first, then enable the other leaf.
 4. Keep real credentials and account data out of source comments and committed docs.
+
+[{"id":"Q29sbGVjdGlvbiw2dVBjOHU3RlZiNEZ5NENhZUFRRVVPLDAv","name":"Neon New Wave","type":"playlist","imageUri":"https://i.soundcdn.com/p/500/500/2q1bhbvo6arzajeWtsTrQKkqn4LJSdLags9Kfkj7oT4ZXYKqoDAcdYsrNUiDEx3gZyoatfsDsVSWRiCvhcS55bZxDVXg8VuNbonWkrJR5hWkZcmGd7Lu9sEzpN"},{"id":"Q29sbGVjdGlvbiw0M0t6Y0M4UGQyMGVPMEdWeUxwS2FoLDAv","name":"Pure Hard Rock Energy","type":"playlist","imageUri":"https://i.soundcdn.com/p/500/500/2q1bhbvo6arzajeWtsTrQKkqn4LJSdKH3ADE8gRchabof7SYBHvzBjkqXKs7BK2Fgqskibqp7LzqYD4pnMpC9gjW6qCx8PutX1KA7B5yz7VjZURhh1wAfqNpod"}]

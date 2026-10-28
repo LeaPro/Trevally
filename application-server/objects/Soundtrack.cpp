@@ -1,4 +1,5 @@
 #include "objects.h"
+#include <Common.h>
 #include <cassert>
 #include <cstring>
 #include <thread>
@@ -17,31 +18,32 @@ Soundtrack::Soundtrack(string path, Object *parent)
     sourceTypeMap({{0, "playlist"}, {1, "schedule"}})
 {
   string name;
-  name = "enabled"; elements[name] = enabledPtr = std::make_shared<BoolControl>(path + "/" + name, this, false);
+  name = "enable"; elements[name] = enabledPtr = std::make_shared<BoolControl>(path + "/" + name, this, false);
+  name = "lastError"; elements[name] = lastErrorPtr = std::make_shared<StringSensor>(path + "/" + name, this, "", 512);
+  name = "troubles"; elements[name] = troublesPtr = std::make_shared<JsonSensor>(path + "/" + name, this, json::array());
   name = "sdkReady"; elements[name] = sdkReadyPtr = std::make_shared<BoolSensor>(path + "/" + name, this, false);
+  name = "websiteReachable"; elements[name] = websiteReachablePtr = std::make_shared<BoolSensor>(path + "/" + name, this, false);
+
   name = "paired"; elements[name] = pairedPtr = std::make_shared<BoolSensor>(path + "/" + name, this, false);
   name = "authStatus"; elements[name] = authStatusPtr = std::make_shared<StringSensor>(path + "/" + name, this, "unknown");
   name = "deviceId"; elements[name] = deviceIdPtr = std::make_shared<StringSensor>(path + "/" + name, this, "", 256);
-  name = "isPlaying"; elements[name] = isPlayingPtr = std::make_shared<BoolSensor>(path + "/" + name, this, false);
-  name = "isPaused"; elements[name] = isPausedPtr = std::make_shared<BoolSensor>(path + "/" + name, this, false);
-  name = "volume"; elements[name] = volumePtr = std::make_shared<UInt32Control>(path + "/" + name, this, 0, 100, 100, "percent");
-
   name = "pairCode"; elements[name] = pairCodePtr = std::make_shared<StringControl>(path + "/" + name, this, "", 16, false, true);
   name = "pair"; elements[name] = pairPtr = std::make_shared<BoolControl>(path + "/" + name, this, false, false, true);
   name = "unpair"; elements[name] = unpairPtr = std::make_shared<BoolControl>(path + "/" + name, this, false, false, true);
-  name = "play"; elements[name] = playPtr = std::make_shared<BoolControl>(path + "/" + name, this, false, true, true);
-  name = "next"; elements[name] = nextPtr = std::make_shared<BoolControl>(path + "/" + name, this, false, false, true);
 
+  name = "soundzone"; elements[name] = soundzonePtr = std::make_shared<JsonSensor>(path + "/" + name, this, json::object());
+  name = "library"; elements[name] = libraryPtr = std::make_shared<JsonSensor>(path + "/" + name, this, json::array());
   name = "playFromSourceId"; elements[name] = playFromSourceIdPtr = std::make_shared<StringControl>(path + "/" + name, this, "", 256, false, true);
   name = "playFromSourceType"; elements[name] = playFromSourceTypePtr = std::make_shared<EnumControl>(path + "/" + name, this, 0, 1, 0, sourceTypeMap, false, true);
   name = "playFromNow"; elements[name] = playFromNowPtr = std::make_shared<BoolControl>(path + "/" + name, this, true, false, true);
 
-  name = "soundzone"; elements[name] = soundzonePtr = std::make_shared<JsonSensor>(path + "/" + name, this, json::object());
+  name = "currentSource"; elements[name] = currentSourcePtr = std::make_shared<JsonSensor>(path + "/" + name, this, json::object());
   name = "currentTrack"; elements[name] = currentTrackPtr = std::make_shared<JsonSensor>(path + "/" + name, this, json::object());
-  name = "library"; elements[name] = libraryPtr = std::make_shared<JsonSensor>(path + "/" + name, this, json::array());
-  name = "troubles"; elements[name] = troublesPtr = std::make_shared<JsonSensor>(path + "/" + name, this, json::array());
-  name = "lastError"; elements[name] = lastErrorPtr = std::make_shared<StringSensor>(path + "/" + name, this, "", 512);
-
+  name = "isPlaying"; elements[name] = isPlayingPtr = std::make_shared<BoolSensor>(path + "/" + name, this, false);
+  name = "play"; elements[name] = playPtr = std::make_shared<BoolControl>(path + "/" + name, this, false, true, true);
+  name = "next"; elements[name] = nextPtr = std::make_shared<BoolControl>(path + "/" + name, this, false, false, true);
+  name = "volume"; elements[name] = volumePtr = std::make_shared<UInt32Control>(path + "/" + name, this, 0, 100, 100, "percent");
+  name = "mute"; elements[name] = mutePtr = std::make_shared<BoolControl>(path + "/" + name, this, false);
 }
 
 Soundtrack::~Soundtrack()
@@ -53,13 +55,7 @@ void Soundtrack::initialize()
 {
   LeafObject::initialize();
   wasEnabled = enabledPtr->get();
-  if (wasEnabled)
-  {
-    initializeSdk();
-  }
-  restorePlayStatePending = true;
-  applyRestoredPlayState();
-  syncSensorState();
+  restorePlayStatePending = wasEnabled && playPtr->get();
 }
 
 extern "C" {
@@ -73,6 +69,11 @@ extern "C" {
 }
 
 namespace {
+bool isNetAudioPlaybackVolumeReady()
+{
+  return std::system("amixer -D net_audio cget name='NetAudio Playback Volume' >/dev/null 2>&1") == 0;
+}
+
 const char *chooseCacheDir()
 {
   if (access("/mnt/data", W_OK) == 0)
@@ -93,12 +94,14 @@ std::string chooseVendorDeviceName()
 }
 }
 
-void Soundtrack::initializeSdk()
+bool Soundtrack::initializeSdk()
 {
   if (sdkInitialized)
   {
-    return;
+    return true;
   }
+
+  const bool netAudioControlReadyAtStartup = isNetAudioPlaybackVolumeReady();
 
   api = &SPLAYER_API;
   controlsApi = api->get_controls_api();
@@ -109,15 +112,17 @@ void Soundtrack::initializeSdk()
 
   if (controlsApi == nullptr || authApi == nullptr || metadataApi == nullptr || libraryApi == nullptr || troublesApi == nullptr)
   {
+    sdkReadyPtr->set(false);
     lastErrorPtr->set("Soundtrack API module lookup failed");
-    return;
+    return false;
   }
 
   audioCallbacks = audio_api_allocate();
   if (audioCallbacks == nullptr)
   {
+    sdkReadyPtr->set(false);
     lastErrorPtr->set("Soundtrack audio callback allocation failed");
-    return;
+    return false;
   }
 
   splayer_config_t config = {SPLAYER_SDK_VERSION};
@@ -135,13 +140,22 @@ void Soundtrack::initializeSdk()
   const int rc = api->create(config, &splayer);
   if (rc != 0 || splayer == nullptr)
   {
+    sdkReadyPtr->set(false);
     lastErrorPtr->set("Soundtrack SDK create failed");
-    return;
+    return false;
   }
 
   sdkInitialized = true;
   sdkReadyPtr->set(true);
-  lastErrorPtr->set("");
+  if (netAudioControlReadyAtStartup || isNetAudioPlaybackVolumeReady())
+  {
+    lastErrorPtr->set("");
+  }
+  else
+  {
+    lastErrorPtr->set("Soundtrack started before net_audio softvol control materialized");
+  }
+  return true;
 }
 
 void Soundtrack::shutdownSdk()
@@ -185,28 +199,39 @@ void Soundtrack::update(bool sensorsOnly, bool refreshVolatileElements)
 
   if (!nowEnabled)
   {
+    websiteReachablePtr->set(false);
     if (sdkInitialized)
     {
       shutdownSdk();
     }
-    if (playPtr->get())
-    {
-      playPtr->set(false);
-    }
+    playPtr->set(false);
+    mutePtr->set(false);
     isPlayingPtr->set(false);
-    isPausedPtr->set(false);
     restorePlayStatePending = false;
     wasEnabled = false;
     syncSensorState();
     return;
   }
 
+  websiteReachablePtr->set(isWebsiteReachable("https://app.soundtrack.io"));
+
   if (!wasEnabled && nowEnabled)
   {
-    initializeSdk();
     restorePlayStatePending = playPtr->get();
+    if (!initializeSdk())
+    {
+      return;
+    }
   }
   wasEnabled = nowEnabled;
+
+  if (!sdkInitialized)
+  {
+    if (!initializeSdk())
+    {
+      return;
+    }
+  }
 
   if (!sdkInitialized || splayer == nullptr)
   {
@@ -268,10 +293,9 @@ void Soundtrack::syncSensorState()
   authStatusPtr->set(authStatusToString(authStatus));
   pairedPtr->set(authStatus == SPLAYER_AUTH_STATUS_PAIRED);
   isPlayingPtr->set(controlsApi->is_playing(splayer) != 0);
-  isPausedPtr->set(controlsApi->is_paused(splayer) != 0);
 
   const int volume = controlsApi->get_volume(splayer);
-  if (volume >= 0 && volume <= 100)
+  if (volume >= 0 && volume <= 100 && !mutePtr->get())
   {
     volumePtr->set(static_cast<uint32_t>(volume));
   }
@@ -284,6 +308,113 @@ void Soundtrack::syncSensorState()
     zone["name"] = soundzone->name == nullptr ? "" : soundzone->name;
     soundzonePtr->set(zone);
     authApi->free_soundzone(soundzone);
+  }
+
+  if (libraryApi != nullptr)
+  {
+    const bool paired = authStatus == SPLAYER_AUTH_STATUS_PAIRED;
+    if (!paired)
+    {
+      if (wasPaired)
+      {
+        libraryApi->reset_library(splayer);
+      }
+      libraryPtr->set(json::array());
+      currentSourcePtr->set(json::object());
+      wasPaired = false;
+      libraryRefreshNeeded = true;
+      libraryFetchInProgress = false;
+      libraryAccumulated = json::array();
+    }
+    else
+    {
+      if (!wasPaired)
+      {
+        libraryRefreshNeeded = true;
+      }
+      wasPaired = true;
+
+      const splayer_async_status_t status = libraryApi->get_library_status(splayer);
+      if (libraryRefreshNeeded && !libraryFetchInProgress && status == SPLAYER_ASYNC_IDLE)
+      {
+        libraryApi->reset_library(splayer);
+        libraryAccumulated = json::array();
+        if (libraryApi->fetch_library(splayer, 50) == 0)
+        {
+          libraryFetchInProgress = true;
+        }
+      }
+
+      if (libraryFetchInProgress && status == SPLAYER_ASYNC_READY)
+      {
+        splayer_library_result_t *result = nullptr;
+        if (libraryApi->consume_library_result(splayer, &result) == 0 && result != nullptr)
+        {
+          const int count = libraryApi->get_result_count(result);
+          for (int i = 0; i < count; ++i)
+          {
+            const splayer_music_source_t *source = libraryApi->get_library_result_item(result, i);
+            if (source == nullptr)
+            {
+              continue;
+            }
+
+            json entry = json::object();
+            entry["id"] = libraryApi->get_source_id(source) == nullptr ? "" : libraryApi->get_source_id(source);
+            entry["name"] = libraryApi->get_source_name(source) == nullptr ? "" : libraryApi->get_source_name(source);
+            entry["type"] = sourceTypeToString(static_cast<int>(libraryApi->get_source_type(source)));
+            entry["imageUri"] = libraryApi->get_source_image_uri(source) == nullptr ? "" : libraryApi->get_source_image_uri(source);
+            libraryAccumulated.push_back(entry);
+          }
+
+          const bool hasMore = libraryApi->result_has_more(result) != 0;
+          libraryApi->free_library_result(result);
+
+          if (hasMore)
+          {
+            if (libraryApi->fetch_library(splayer, 50) != 0)
+            {
+              libraryFetchInProgress = false;
+              libraryRefreshNeeded = true;
+            }
+          }
+          else
+          {
+            libraryPtr->set(libraryAccumulated);
+            libraryFetchInProgress = false;
+            libraryRefreshNeeded = false;
+          }
+        }
+        else
+        {
+          libraryFetchInProgress = false;
+          libraryRefreshNeeded = true;
+        }
+      }
+      else if (libraryFetchInProgress && status == SPLAYER_ASYNC_ERROR)
+      {
+        splayer_library_result_t *result = nullptr;
+        libraryApi->consume_library_result(splayer, &result);
+        if (result != nullptr)
+        {
+          libraryApi->free_library_result(result);
+        }
+        libraryFetchInProgress = false;
+        libraryRefreshNeeded = true;
+      }
+
+      splayer_music_source_t *source = libraryApi->get_current_source(splayer);
+      json current = json::object();
+      if (source != nullptr)
+      {
+        current["id"] = libraryApi->get_source_id(source) == nullptr ? "" : libraryApi->get_source_id(source);
+        current["name"] = libraryApi->get_source_name(source) == nullptr ? "" : libraryApi->get_source_name(source);
+        current["type"] = sourceTypeToString(static_cast<int>(libraryApi->get_source_type(source)));
+        current["imageUri"] = libraryApi->get_source_image_uri(source) == nullptr ? "" : libraryApi->get_source_image_uri(source);
+        libraryApi->free_source(source);
+      }
+      currentSourcePtr->set(current);
+    }
   }
 
   syncMetadata();
@@ -395,9 +526,12 @@ void Soundtrack::handleControls()
     unpairPtr->set(false);
   }
 
-  if (playPtr->isModified())
+  const bool playModified = playPtr->isModified();
+  const bool wantsPlay = playPtr->get();
+  const bool isPlayingNow = controlsApi->is_playing(splayer) != 0;
+  const bool shouldForcePause = !wantsPlay && isPlayingNow;
+  if (playModified || shouldForcePause)
   {
-    const bool wantsPlay = playPtr->get();
     const int rc = wantsPlay ? controlsApi->play(splayer) : controlsApi->pause(splayer);
     if (rc != 0)
     {
@@ -418,10 +552,11 @@ void Soundtrack::handleControls()
     nextPtr->set(false);
   }
 
-  if (volumePtr->isModified())
+  if (volumePtr->isModified() || mutePtr->isModified())
   {
-    const uint32_t volume = volumePtr->get();
-    if (controlsApi->set_volume(splayer, static_cast<int>(volume)) != 0)
+    const uint32_t requestedVolume = volumePtr->get();
+    const uint32_t effectiveVolume = mutePtr->get() ? 0U : requestedVolume;
+    if (controlsApi->set_volume(splayer, static_cast<int>(effectiveVolume)) != 0)
     {
       lastErrorPtr->set("Soundtrack volume set failed");
     }
@@ -433,16 +568,49 @@ void Soundtrack::handleControls()
     if (!sourceId.empty())
     {
       const int sourceType = playFromSourceTypePtr->getEnumValue();
+      const char *sourceTypeName = sourceTypeToString(sourceType);
+
+      // If the library has been fetched, validate that sourceId matches the selected source type.
+      // This catches a common integration mistake: sending a playlist ID while selecting schedule.
+      bool sourceFoundInLibrary = false;
+      bool sourceTypeMatches = false;
+      for (const auto &entry : libraryAccumulated)
+      {
+        if (!entry.is_object())
+        {
+          continue;
+        }
+        const string id = entry.value("id", "");
+        if (id != sourceId)
+        {
+          continue;
+        }
+        sourceFoundInLibrary = true;
+        sourceTypeMatches = entry.value("type", "") == sourceTypeName;
+        break;
+      }
+
+      if (sourceFoundInLibrary && !sourceTypeMatches)
+      {
+        lastErrorPtr->set("Soundtrack set_play_from rejected: sourceId type does not match playFromSourceType");
+        return;
+      }
+
       const int playNow = playFromNowPtr->get() ? 1 : 0;
       const int rc = libraryApi->set_play_from(splayer, sourceId.c_str(), static_cast<splayer_source_type_t>(sourceType), playNow);
       if (rc != 0)
       {
-        lastErrorPtr->set("Soundtrack set_play_from failed");
+        lastErrorPtr->set("Soundtrack set_play_from failed (check sourceId and playFromSourceType)");
+      }
+      else
+      {
+        lastErrorPtr->set("");
       }
     }
-    playFromSourceIdPtr->isModified();
-    playFromSourceTypePtr->isModified();
-    playFromNowPtr->isModified();
+    else
+    {
+      lastErrorPtr->set("Soundtrack set_play_from skipped: playFromSourceId is empty");
+    }
   }
 }
 

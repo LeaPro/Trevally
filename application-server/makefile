@@ -102,7 +102,7 @@ DEP=$(OBJ:%.o=%.d)
 BIN=$(OBJDIR)/application-server
  
 # compiler/linker flags
-COMPFLAGS=-g -pthread -Wno-psabi -O3 -Wno-unused-result
+COMPFLAGS=-g -pthread -Wno-psabi -O0 -Wno-unused-result
 COMPFLAGS+=-DSAMPLE_RATE=96e3f
 COMPFLAGS+=-DSOUNDTRACK_ENABLED=$(SOUNDTRACK_ENABLED)
 COMPFLAGS+=-DLV_LINUX_BACKEND=\"$(LVGL_BACKEND)\"
