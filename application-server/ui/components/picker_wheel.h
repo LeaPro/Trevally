@@ -121,6 +121,16 @@ void picker_wheel_set_secondary_text(lv_obj_t* picker, int index, const char* te
 
 void picker_wheel_nudge(lv_obj_t* picker, int delta, bool anim);
 
+/**
+ * @brief Replace all items in place (same picker object, no visible reset).
+ * @param items Array of @p item_count items (copied; string pointers only need to
+ *              stay valid for the duration of this call)
+ * @param selected_index Row to select afterwards (clamped to the new range)
+ * @return false (nothing changed) on bad arguments or allocation failure
+ */
+bool picker_wheel_set_items(lv_obj_t* picker, const picker_wheel_item_t* items,
+                            int item_count, int selected_index);
+
 void picker_wheel_click(lv_obj_t* picker);
 
 void picker_wheel_set_press_active(lv_obj_t* picker, bool active);

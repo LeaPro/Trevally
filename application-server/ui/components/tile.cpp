@@ -55,7 +55,7 @@ static void tile_clicked_cb(lv_event_t *e)
     for (const TileTap &t : tileTaps) {
         if (t.tile != tile) continue;
         switch (t.type) {
-        case BLUETOOTH: tile_bluetooth_open(t.name, t.binding); break;
+        case BLUETOOTH: tile_bluetooth_volume_open(t.name, t.binding); break;
         default: break;
         }
         return;
@@ -193,6 +193,18 @@ struct LiveNumber {
 };
 static std::vector<LiveNumber> liveNumbers;
 
+struct LiveUpdate {
+    lv_obj_t *screen;
+    std::function<void()> fn;
+};
+static std::vector<LiveUpdate> liveUpdates;
+
+void tile_bind_update(lv_obj_t *anchor, std::function<void()> fn)
+{
+    if (!anchor || !fn) return;
+    liveUpdates.push_back({lv_obj_get_screen(anchor), std::move(fn)});
+}
+
 void tile_bind_number(lv_obj_t *label, lv_obj_t *range,
                       const std::string &leafPath, const char *elementName)
 {
@@ -208,6 +220,12 @@ void tile_bind_number(lv_obj_t *label, lv_obj_t *range,
 void tile_live_update()
 {
     lv_obj_t *active = lv_screen_active();
+    for (size_t i = 0; i < liveUpdates.size(); i++) {   /* by index: stays valid if a callback adds a binding */
+        if (liveUpdates[i].screen == active && liveUpdates[i].fn) {
+            std::function<void()> fn = liveUpdates[i].fn;
+            fn();
+        }
+    }
     for (LiveNumber &b : liveNumbers) {
         if (b.screen != active) continue;   /* refreshed on the first tick after it becomes active */
         TileNumber n = readNumber(b.element.get());
@@ -227,6 +245,9 @@ void tile_live_clear(lv_obj_t *screen)
     liveNumbers.erase(std::remove_if(liveNumbers.begin(), liveNumbers.end(),
                                      [screen](const LiveNumber &b) { return b.screen == screen; }),
                       liveNumbers.end());
+    liveUpdates.erase(std::remove_if(liveUpdates.begin(), liveUpdates.end(),
+                                     [screen](const LiveUpdate &u) { return u.screen == screen; }),
+                      liveUpdates.end());
     tileTaps.erase(std::remove_if(tileTaps.begin(), tileTaps.end(),
                                   [screen](const TileTap &t) { return t.screen == screen; }),
                    tileTaps.end());
@@ -259,6 +280,20 @@ bool tile_read_bool(const std::string &leafPath, const char *elementName)
     if (auto b = dynamic_cast<BoolElement *>(element.get()))
         return b->get();
     return false;
+}
+
+void tile_set_string(const std::string &leafPath, const char *elementName, const std::string &value)
+{
+    auto element = root->elementFromPath(leafPath + "/" + elementName);
+    if (auto s = dynamic_cast<StringElement *>(element.get()))
+        s->set(value);
+}
+
+void tile_set_bool(const std::string &leafPath, const char *elementName, bool value)
+{
+    auto element = root->elementFromPath(leafPath + "/" + elementName);
+    if (auto b = dynamic_cast<BoolElement *>(element.get()))
+        b->set(value);
 }
 
 std::string tile_format_number(float value)

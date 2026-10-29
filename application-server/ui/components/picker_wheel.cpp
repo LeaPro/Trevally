@@ -89,6 +89,14 @@ static lv_obj_t* create_item_accessory(lv_obj_t* parent, const picker_wheel_data
                                        const picker_wheel_item_t* item);
 static void create_picker_item(lv_obj_t* parent, picker_wheel_data_t* data, int index);
 
+/* Empty block above the first / below the last row so those rows can scroll to the centre. */
+static void add_scroll_spacer(lv_obj_t* scroll_area) {
+    lv_obj_t* spacer = lv_obj_create(scroll_area);
+    lv_obj_remove_style_all(spacer);
+    lv_obj_set_size(spacer, ITEM_WIDTH, FADE_HEIGHT);
+    lv_obj_clear_flag(spacer, LV_OBJ_FLAG_CLICKABLE);
+}
+
 /**
  * Create the picker wheel component
  */
@@ -237,6 +245,64 @@ void picker_wheel_set_selected(lv_obj_t* picker, int index, bool anim) {
     
     set_selected_index(data, index, true);
     scroll_to_index(data, index, anim);
+}
+
+/**
+ * Replace every item in place
+ */
+bool picker_wheel_set_items(lv_obj_t* picker, const picker_wheel_item_t* items,
+                            int item_count, int selected_index) {
+    if (!picker || !items || item_count <= 0) return false;
+
+    picker_wheel_data_t* data = (picker_wheel_data_t*)lv_obj_get_user_data(picker);
+    if (!data || !data->scroll_area) return false;
+
+    size_t n = (size_t)item_count;
+    picker_wheel_item_t* new_items = (picker_wheel_item_t*)malloc(sizeof(picker_wheel_item_t) * n);
+    lv_obj_t** new_rows = (lv_obj_t**)calloc(n, sizeof(lv_obj_t*));
+    lv_obj_t** new_primary = (lv_obj_t**)calloc(n, sizeof(lv_obj_t*));
+    lv_obj_t** new_secondary = (lv_obj_t**)calloc(n, sizeof(lv_obj_t*));
+    lv_obj_t** new_accessory = (lv_obj_t**)calloc(n, sizeof(lv_obj_t*));
+    if (!new_items || !new_rows || !new_primary || !new_secondary || !new_accessory) {
+        free(new_items);
+        free(new_rows);
+        free(new_primary);
+        free(new_secondary);
+        free(new_accessory);
+        return false;
+    }
+    memcpy(new_items, items, sizeof(picker_wheel_item_t) * n);
+
+    /* Install the new (still empty) arrays before touching the widgets, so scroll events
+     * fired while the rows are replaced only ever see a consistent state. */
+    free(data->items_copy);
+    free(data->item_rows);
+    free(data->primary_labels);
+    free(data->secondary_labels);
+    free(data->accessory_objs);
+    data->items_copy = new_items;
+    data->item_rows = new_rows;
+    data->primary_labels = new_primary;
+    data->secondary_labels = new_secondary;
+    data->accessory_objs = new_accessory;
+    data->props.items = new_items;
+    data->props.item_count = item_count;
+    data->props.selected_index = selected_index < 0 ? 0
+                               : selected_index >= item_count ? item_count - 1 : selected_index;
+    data->touch_pressed_index = -1;
+
+    lv_obj_clean(data->scroll_area);
+    add_scroll_spacer(data->scroll_area);
+    for (int i = 0; i < item_count; i++) {
+        create_picker_item(data->scroll_area, data, i);
+    }
+    add_scroll_spacer(data->scroll_area);
+
+    lv_obj_update_layout(data->scroll_area);
+    scroll_to_index(data, data->props.selected_index, false);
+    refresh_all_item_visuals(data);
+    refresh_highlight_box_color(data);
+    return true;
 }
 
 /**
@@ -476,6 +542,14 @@ static void create_picker_item(lv_obj_t* parent, picker_wheel_data_t* data, int 
             text_x += ACCESSORY_SLOT_WIDTH;
         }
     }
+    if (data->props.type == PICKER_WHEEL_TYPE_CENTER_CHECK) {
+        /* Centered text stays put whether or not a row has its check: keep both sides clear. */
+        text_x = ITEM_TEXT_PAD_X + ACCESSORY_SLOT_WIDTH;
+        text_width = ITEM_WIDTH - (ITEM_TEXT_PAD_X + ACCESSORY_SLOT_WIDTH) * 2;
+        primary_width = text_width;
+        secondary_x = text_x;
+        secondary_width = text_width;
+    }
 
     if (has_secondary) {
         primary_width = text_width / 2;
@@ -512,9 +586,9 @@ static void create_picker_item(lv_obj_t* parent, picker_wheel_data_t* data, int 
 
     lv_obj_t* primary = lv_label_create(row);
     lv_obj_set_width(primary, primary_width);
-    lv_label_set_text(primary, item->primary_text ? item->primary_text : "");
     lv_obj_set_style_text_font(primary, FONT_PICKER_WHEEL, 0);
     lv_obj_set_style_text_align(primary, normalize_text_align(item->primary_text_align), 0);
+    ui_adaptive_text_set(primary, item->primary_text ? item->primary_text : "", 1);   // marquee when it doesn't fit
     lv_obj_align(primary, LV_ALIGN_LEFT_MID, text_x, 0);
 
     lv_obj_t* secondary = NULL;

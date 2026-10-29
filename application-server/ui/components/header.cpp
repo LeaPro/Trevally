@@ -18,8 +18,16 @@ static lv_obj_t *make_slot(lv_obj_t *header, const header_slot_t &slot)
     lv_obj_set_size(s, UI_HEADER_H_PX, UI_HEADER_H_PX);
     if (!slot.show) return s;
 
-    lv_obj_t *icon = UI_ICON_CREATE_DEFAULT(s, slot.icon);
-    if (icon) lv_obj_center(icon);
+    if (slot.text) {
+        lv_obj_t *label = lv_label_create(s);
+        lv_obj_add_style(label, ui_theme_get_style_text_primary(), 0);
+        lv_obj_set_style_text_font(label, &satoshi_medium_20, 0);
+        lv_label_set_text(label, slot.text);
+        lv_obj_center(label);
+    } else {
+        lv_obj_t *icon = UI_ICON_CREATE_DEFAULT(s, slot.icon);
+        if (icon) lv_obj_center(icon);
+    }
 
     if (slot.on_click) {
         lv_obj_add_flag(s, LV_OBJ_FLAG_CLICKABLE);

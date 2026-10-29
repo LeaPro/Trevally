@@ -33,10 +33,14 @@ void nav_init(lv_obj_t *home_focus);
 /** Creates an empty themed screen. Build its widgets on .screen, then reach it with nav_goto() (destination) or nav_push() (page). */
 nav_page_t nav_screen_create();
 
-void nav_push(const nav_page_t &page);
+void nav_push(const nav_page_t &page);   /* pages (push / replace / pop) switch instantly; only nav_goto animates */
 
-/** Back one page (slides right and deletes the popped page). With no page open, goes home from any other destination. */
-void nav_pop();
+/** Swaps the top page for @p page (deleting the page it replaces); back from @p page returns to the page below. */
+void nav_replace(const nav_page_t &page);
+
+/** Back @p count pages (default one). The popped page is deleted; pages under it that are also closed are deleted too.
+ *  With no page open, goes home from any other destination. */
+void nav_pop(size_t count = 1);
 
 /** Switches to a destination, closing any open pages. Slides right when going home, left otherwise. */
 void nav_goto(const nav_dest_t &dest, bool animate = true);

@@ -12,9 +12,10 @@
 
 typedef struct {
     bool           show;        /* false: empty slot (its width is still reserved) */
-    ui_icon_type_t icon;
+    ui_icon_type_t icon;        /* ignored when text is set */
     lv_event_cb_t  on_click;    /* NULL: placeholder, not clickable */
     void          *user_data;
+    const char    *text = nullptr;   /* non-NULL: show this text (e.g. "Edit") instead of the icon */
 } header_slot_t;
 
 /**

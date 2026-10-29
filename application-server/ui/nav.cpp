@@ -51,15 +51,35 @@ nav_page_t nav_screen_create()
 void nav_push(const nav_page_t &page)
 {
     stack.push_back(page);
-    lv_screen_load_anim(page.screen, LV_SCREEN_LOAD_ANIM_MOVE_LEFT, NAV_ANIM_MS, 0, false);
+    lv_screen_load_anim(page.screen, LV_SCREEN_LOAD_ANIM_NONE, 0, 0, false);
     take_focus(page.focus);
 }
 
-void nav_pop()
+void nav_replace(const nav_page_t &page)
+{
+    if (stack.empty()) {
+        nav_push(page);
+        return;
+    }
+    tile_live_clear(stack.back().screen);
+    stack.back() = page;
+    lv_screen_load_anim(page.screen, LV_SCREEN_LOAD_ANIM_NONE, 0, 0, true);   /* deletes the replaced page */
+    take_focus(page.focus);
+}
+
+void nav_pop(size_t count)
 {
     if (stack.empty()) {
         nav_goto(homeDest);   /* no-op when already home */
         return;
+    }
+
+    /* pages under the one on screen are not shown, so closing them needs no animation */
+    for (; count > 1 && stack.size() > 1; count--) {
+        const nav_page_t hidden = stack[stack.size() - 2];
+        stack.erase(stack.end() - 2);
+        tile_live_clear(hidden.screen);
+        lv_obj_delete(hidden.screen);
     }
 
     const nav_page_t leaving = stack.back();
@@ -67,7 +87,7 @@ void nav_pop()
     tile_live_clear(leaving.screen);
 
     const nav_page_t &target = stack.empty() ? currentDest : stack.back();
-    lv_screen_load_anim(target.screen, LV_SCREEN_LOAD_ANIM_MOVE_RIGHT, NAV_ANIM_MS, 0, true);   /* deletes the popped page */
+    lv_screen_load_anim(target.screen, LV_SCREEN_LOAD_ANIM_NONE, 0, 0, true);   /* deletes the popped page */
     take_focus(target.focus);
 }
 

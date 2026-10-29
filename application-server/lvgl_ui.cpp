@@ -25,6 +25,7 @@
 #include "ui/ui_design_tokens.h"
 
 #include <object.h>
+#include <Bluetooth.h>
 #include <Appearance.h>
 #include <Misc.h>
 #include <Themes.h>
@@ -83,7 +84,10 @@ static std::string brightnessText()
 
 static std::string bluetoothText()
 {
-  return tile_read_string("/bluetooth", "connectedDevice");
+  // connectedDevice is "Name (MAC)"; only the name is shown
+  const std::string device = tile_read_string("/bluetooth", "connectedDevice");
+  std::string name, mac;
+  return Bluetooth::parseDevice(device, name, mac) ? name : device;
 }
 
 // Current value shown on the right of a Settings row.
@@ -386,6 +390,7 @@ static void settingsRowActivatedCb(int index, void *)
   switch (index)
   {
   case SETTINGS_ROW_BRIGHTNESS: openBrightnessPage(); break;
+  case SETTINGS_ROW_BLUETOOTH:  tile_bluetooth_devices_open(SETTINGS_ROW_NAMES[SETTINGS_ROW_BLUETOOTH]); break;
   case SETTINGS_ROW_NETWORK:    openNetworkPage();    break;
   case SETTINGS_ROW_APPEARANCE: openAppearancePage(); break;
   case SETTINGS_ROW_REBOOT:

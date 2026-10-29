@@ -24,6 +24,7 @@
 #define TILE_H
 
 #include "lvgl/lvgl.h"
+#include <functional>
 #include <string>
 
 typedef enum {
@@ -66,7 +67,10 @@ void tile_macro_build        (lv_obj_t *root, const std::string &name, const std
 
 /* Pages: a tile type may open its own page (see nav.h) when tapped. Types with a
  * page are made clickable by tile_create(). */
-void tile_bluetooth_open(const std::string &name, const std::string &binding);
+void tile_bluetooth_volume_open(const std::string &name, const std::string &binding);
+
+/** Opens the Paired devices page directly (e.g. from the Settings Bluetooth row), titled @p title. */
+void tile_bluetooth_devices_open(const std::string &title);
 
 /* Live values: a tile or page that follows an element at runtime binds its widgets to it.
  * tile_live_update() is called every UI tick (see scheduleLvglTick) and only touches
@@ -79,6 +83,9 @@ void tile_bluetooth_open(const std::string &name, const std::string &binding);
 void tile_bind_number(lv_obj_t *label, lv_obj_t *range,
                       const std::string &leafPath, const char *elementName);
 void tile_live_update();
+/** Calls @p fn on every UI tick while @p anchor's screen is the active one (for widgets
+ *  that need more than a number kept in sync, e.g. a list). Dropped by tile_live_clear(). */
+void tile_bind_update(lv_obj_t *anchor, std::function<void()> fn);
 /** Drops the bindings and tap targets of every widget on @p screen. */
 void tile_live_clear(lv_obj_t *screen);
 
@@ -129,6 +136,12 @@ std::string tile_read_string(const std::string &leafPath, const char *elementNam
 
 /** Reads a boolean element; false if missing. */
 bool tile_read_bool(const std::string &leafPath, const char *elementName);
+
+/** Writes a string control (e.g. "/bluetooth", "removeDevice"); no-op if missing or not a string. */
+void tile_set_string(const std::string &leafPath, const char *elementName, const std::string &value);
+
+/** Writes a boolean control (e.g. "/bluetooth", "scan"); no-op if missing or not a bool. */
+void tile_set_bool(const std::string &leafPath, const char *elementName, bool value);
 
 /** "50" for whole numbers, "50.5" otherwise. */
 std::string tile_format_number(float value);
