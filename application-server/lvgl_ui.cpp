@@ -27,6 +27,7 @@
 #include <object.h>
 #include <Bluetooth.h>
 #include <Appearance.h>
+#include <DeviceInfo.h>
 #include <Misc.h>
 #include <Themes.h>
 #include <Screens.h>
@@ -384,6 +385,63 @@ static void updateAppearanceValues()
     info_list_set_value(appearanceList, row, currentChoiceLabel(row).c_str());
 }
 
+// About page: read-only rows from the DeviceInfo leaf. Anything missing shows "-".
+enum AboutRow
+{
+  ABOUT_ROW_NAME,
+  ABOUT_ROW_SERIAL_NUMBER,
+  ABOUT_ROW_FIRMWARE_VERSION,
+  ABOUT_ROW_COUNT
+};
+static const char *const ABOUT_ROW_LABELS[ABOUT_ROW_COUNT] = {"Name", "Serial Number", "Firmware Version"};
+
+static std::shared_ptr<DeviceInfo> deviceInfoLeaf;
+static lv_obj_t *aboutList;   // only while the About page is open
+
+static std::string aboutRowValue(int row)
+{
+  if (!deviceInfoLeaf)
+    return "-";
+  std::string value;
+  switch (row)
+  {
+  case ABOUT_ROW_NAME:             value = deviceInfoLeaf->deviceNamePtr->get(); break;
+  case ABOUT_ROW_SERIAL_NUMBER:    value = deviceInfoLeaf->serialNumPtr->get();  break;
+  case ABOUT_ROW_FIRMWARE_VERSION: value = deviceInfoLeaf->arcFwVerPtr->get();   break;
+  }
+  return value.empty() ? "-" : value;
+}
+
+static void openAboutPage()
+{
+  nav_page_t page = nav_screen_create();
+
+  const header_slot_t back  = {true,  UI_ICON_ARROW_BACK, nav_back_cb, nullptr};
+  const header_slot_t empty = {false, UI_ICON_SETTINGS,   nullptr,     nullptr};
+  header_create(page.screen, back, "About", empty);
+
+  std::string values[ABOUT_ROW_COUNT];   // info_list_create copies the text it shows
+  info_row_t rows[ABOUT_ROW_COUNT];
+  for (int row = 0; row < ABOUT_ROW_COUNT; row++)
+  {
+    values[row] = aboutRowValue(row);
+    rows[row] = {ABOUT_ROW_LABELS[row], values[row].c_str()};
+  }
+  aboutList = info_list_create(page.screen, rows, ABOUT_ROW_COUNT);
+  lv_obj_add_event_cb(aboutList, [](lv_event_t *) { aboutList = nullptr; }, LV_EVENT_DELETE, nullptr);
+
+  nav_push(page);
+}
+
+// Keeps the About page current (e.g. a device rename from the web UI) while it is shown.
+static void updateAboutValues()
+{
+  if (!aboutList || lv_screen_active() != lv_obj_get_screen(aboutList))
+    return;
+  for (int row = 0; row < ABOUT_ROW_COUNT; row++)
+    info_list_set_value(aboutList, row, aboutRowValue(row).c_str());
+}
+
 // A tap on a row, or an encoder press released on it, opens that row's page.
 static void settingsRowActivatedCb(int index, void *)
 {
@@ -393,6 +451,7 @@ static void settingsRowActivatedCb(int index, void *)
   case SETTINGS_ROW_BLUETOOTH:  tile_bluetooth_devices_open(SETTINGS_ROW_NAMES[SETTINGS_ROW_BLUETOOTH]); break;
   case SETTINGS_ROW_NETWORK:    openNetworkPage();    break;
   case SETTINGS_ROW_APPEARANCE: openAppearancePage(); break;
+  case SETTINGS_ROW_ABOUT:      openAboutPage();      break;
   case SETTINGS_ROW_REBOOT:
     if (miscLeaf && miscLeaf->rebootPtr)
       miscLeaf->rebootPtr->set(true);
@@ -630,6 +689,7 @@ static void scheduleLvglTick(std::shared_ptr<boost::asio::steady_timer> timer,
   updateSettingsValues();
   updateNetworkValues();
   updateAppearanceValues();
+  updateAboutValues();
 
   uint32_t ms = lv_timer_handler();
   if (ms == LV_NO_TIMER_READY)
@@ -714,6 +774,7 @@ void lvglUiInit(boost::asio::io_context &io_context, std::shared_ptr<RootObject>
   appearanceLeaf = appearance;
   themesLeaf = themes;
   miscLeaf = std::dynamic_pointer_cast<Misc>(root->leafFromPath("/misc"));
+  deviceInfoLeaf = std::dynamic_pointer_cast<DeviceInfo>(root->leafFromPath("/deviceInfo"));
   ui_design_tokens_init(appearance, themes);
 
   // The screen itself is a plain lv_obj and never picks up a theme's
