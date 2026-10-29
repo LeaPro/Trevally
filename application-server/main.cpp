@@ -116,13 +116,17 @@ int main(int argc, char *argv[])
     // create the root of the object hierarchy tree 
     root = make_shared<RootObject>(&kvs);
     // populate the leaves of the tree
+    root->addLeaf<UAC>("/UAC");
     root->addLeaf<Discovery>("/discovery");
     root->addLeaf<Bluetooth>("/bluetooth");
     root->addLeaf<Misc>("/misc");
     root->addLeaf<Ethernet>("/network/ethernet");
     root->addLeaf<Test>("/test");
+    root->addLeaf<Logs>("/logs");
+    root->addLeaf<Tech>("/tech");
+    root->addLeaf<DeviceInfo>("/deviceInfo");
     root->addLeaf<Files>("/files");
-    root->addLeaf<CustomChannels>("/customchannels");
+    root->addLeaf<CustomChannels>("/customChannels");
     root->addLeaf<Screens>("/screens");
     root->addLeaf<Tiles>("/tiles");
     root->addLeaf<LeaOutput>("/leaOutput");
