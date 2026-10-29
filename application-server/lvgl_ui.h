@@ -13,3 +13,8 @@ class RootObject;
 // build (see makefile). `root` is forwarded to homeCreate() to build the
 // Home screen's tiles from the object hierarchy.
 void lvglUiInit(boost::asio::io_context &io_context, std::shared_ptr<RootObject> root);
+
+// Undoes what lvglUiInit() changed outside the process (framebuffer backend: puts the
+// virtual terminal back in text mode so the kernel console is visible again). Call once
+// after io_context.run() returns. Safe to call if init failed or never ran.
+void lvglUiShutdown();

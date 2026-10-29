@@ -172,6 +172,7 @@ int main(int argc, char *argv[])
     if (io_context.stopped())
       io_context.restart();
     io_context.run();
+    lvglUiShutdown();
   }
   catch (std::exception &e)
   {

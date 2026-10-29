@@ -15,6 +15,13 @@
 #include <driver_backends.h>
 #include <simulator_settings.h>
 
+#if LV_USE_LINUX_FBDEV
+#include <fcntl.h>
+#include <linux/kd.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
+#endif
+
 #include "ui/components/header.h"
 #include "ui/components/info_list.h"
 #include "ui/components/level_gauge.h"
@@ -707,6 +714,27 @@ static void scheduleLvglTick(std::shared_ptr<boost::asio::steady_timer> timer,
   });
 }
 
+// True once lvglUiInit() has put the console in graphics mode (framebuffer backend only).
+static bool consoleInGraphicsMode;
+
+void lvglUiShutdown()
+{
+#if LV_USE_LINUX_FBDEV
+  if (!consoleInGraphicsMode)
+    return;
+  consoleInGraphicsMode = false;
+  const int tty = open("/dev/tty0", O_RDWR);
+  if (tty < 0 || ioctl(tty, KDSETMODE, KD_TEXT) < 0)
+  {
+    perror("lvgl: could not put /dev/tty0 back in text mode");
+  }
+  if (tty >= 0)
+  {
+    close(tty);
+  }
+#endif
+}
+
 void lvglUiInit(boost::asio::io_context &io_context, std::shared_ptr<RootObject> root)
 {
   lv_init();
@@ -731,6 +759,26 @@ void lvglUiInit(boost::asio::io_context &io_context, std::shared_ptr<RootObject>
     fprintf(stderr, "lvgl: failed to initialize display backend\n");
     return;
   }
+
+#if LV_USE_LINUX_FBDEV
+  // The kernel's framebuffer console (getty on tty1, cursor blink, VT switches) keeps
+  // writing into /dev/fb0 behind LVGL's back, which only redraws what changed. Putting
+  // the VT in graphics mode stops fbcon from touching the framebuffer; lvglUiShutdown()
+  // puts it back.
+  const int tty = open("/dev/tty0", O_RDWR);
+  if (tty < 0 || ioctl(tty, KDSETMODE, KD_GRAPHICS) < 0)
+  {
+    perror("lvgl: could not put /dev/tty0 in graphics mode");
+  }
+  else
+  {
+    consoleInGraphicsMode = true;
+  }
+  if (tty >= 0)
+  {
+    close(tty);   // KD_GRAPHICS stays in effect after close
+  }
+#endif
 
 #if LV_USE_EVDEV
   // LVGL's evdev auto-discovery only classifies devices exposing legacy
@@ -787,6 +835,12 @@ void lvglUiInit(boost::asio::io_context &io_context, std::shared_ptr<RootObject>
   applyOrientation();
   buildHome();
   buildSettings();
+
+  // LVGL only flushes what changed, so on the framebuffer backend whatever was in the
+  // framebuffer before the app started (boot splash, console, garbage after a reboot)
+  // survives wherever the UI draws nothing new. Redraw the whole screen once, now.
+  lv_obj_invalidate(homeScreen);
+  lv_refr_now(nullptr);
 
   auto timer = std::make_shared<boost::asio::steady_timer>(io_context);
   scheduleLvglTick(timer, appearance, themes, screens, tiles);
