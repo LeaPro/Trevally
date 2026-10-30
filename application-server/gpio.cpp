@@ -463,7 +463,10 @@ int32_t Gpio::GetValue(int32_t *value)
 
 	fd = open(buf, O_RDONLY);
 	if (fd < 0) {
-		perror("Gpio::GetValue");
+		if (!loggedGetValueError) {
+			perror("Gpio::GetValue");
+			loggedGetValueError = true;
+		}
 		return fd;
 	}
 
@@ -545,7 +548,7 @@ int32_t Gpio::Open()
 		if (this->fd < 0) {
 			perror("Gpio::Open");
 		}
-		if (!strcmp(this->direction, "in") && this->edge != nullptr)
+		if (this->direction != nullptr && this->edge != nullptr && !strcmp(this->direction, "in"))
 		{
 		  // clear initial interrupt (otherwise first call to Poll()/poll() returns immediately)
 			if (Poll(1) == 1)

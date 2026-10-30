@@ -1,9 +1,7 @@
 #pragma once
 #include <object.h>
 #include <boost/asio.hpp>
-#ifdef __ARMEL__
 #include "gpio.h"
-#endif
 
 class Misc final : public LeafObject
 {
@@ -12,8 +10,23 @@ public:
   void initialize() override;
   using LeafObject::update;
   void update(bool sensorsOnly = false, bool refreshVolatileElements = false) override;
+  void factoryReset();
+  void reboot();
+
+  std::shared_ptr<BoolControl> rebootPtr;
+  std::shared_ptr<BoolControl> factoryResetPtr;
+  std::shared_ptr<StringSensor> fwUpdateStatusPtr;
+  std::shared_ptr<BoolControl> ledTestPtr;
+  std::shared_ptr<BoolControl> setupModePtr;
 
 private:
+  // PILOTFISH-QUAD-v128.syscfg: GPIO1_3_FACTORY_RESET -> RGMII2_RD0 (main_gpio1 pin 3)
+  // active-low push button (reads 0 while held down); adjust if board wiring differs
+  Gpio factoryResetButton{am62x_gpio_num("gpio1", 3)};
+
+  // PILOTFISH-QUAD-v128.syscfg: GPIO0_3_LED_CTRL_nRESET -> OSPI0_D0 (main_gpio0 pin 3)
+  // active-low reset for the IS31FL3235A LED driver; output, default high (not in reset)
+  Gpio ledDriverReset{am62x_gpio_num("gpio0", 3), 1};
 };
 
 extern bool firCoeffsStringFormatIsValid(string s);

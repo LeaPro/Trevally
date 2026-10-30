@@ -8,26 +8,61 @@ SOUNDTRACK_LIB=$(SOUNDTRACK_DIR)/lib
 ifndef SDKTARGETSYSROOT
 CC=gcc
 SOUNDTRACK_ENABLED=0
+# Host/dev-machine build: LVGL is built+installed natively from LEA-LVGL
+# (SDL2 window backend) into ~/.local -- see LEA-LVGL/configs/trevally_host.defconfig
+# and `cmake --install`. Add an rpath so the binary finds it without needing
+# LD_LIBRARY_PATH set at runtime.
+LVGL_INC=$(HOME)/.local/include $(HOME)/.local/include/lvgl $(HOME)/.local/include/lvgl/config
+LVGL_LIB=$(HOME)/.local/lib
+LVGL_BACKEND=SDL
+LVGL_EXTRA_LDLIBS=$(shell pkg-config --libs sdl2 2>/dev/null || echo -lSDL2)
+LVGL_EXTRA_LDFLAGS=-Wl,-rpath,$(HOME)/.local/lib
+LVGL_EXTRA_CFLAGS=
 else
 BOOST_INC=$(SDKTARGETSYSROOT)/usr/include
 BOOST_LIB=$(SDKTARGETSYSROOT)/usr/lib
 SOUNDTRACK_ENABLED=1
+# Target build: LVGL (lvgl-trevally recipe) ships headers/libs in the SDK
+# sysroot, built with the DRM (dumb-buffer) display backend and evdev input.
+LVGL_INC=$(SDKTARGETSYSROOT)/usr/include $(SDKTARGETSYSROOT)/usr/include/lvgl $(SDKTARGETSYSROOT)/usr/include/lvgl/config
+LVGL_LIB=$(SDKTARGETSYSROOT)/usr/lib
+LVGL_BACKEND=DRM
+LVGL_EXTRA_LDLIBS=
+LVGL_EXTRA_LDFLAGS=
+# LV_USE_HID_ENCODER is a custom Kconfig option (not upstream LVGL), so the
+# vendored lvgl submodule's generated config header has no alias from
+# CONFIG_LV_USE_HID_ENCODER to the plain LV_USE_HID_ENCODER macro this file's
+# own #if LV_USE_HID_ENCODER check (in lvgl_ui.cpp) relies on - define it
+# directly here to match the same compiler-flag workaround used on the
+# LEA-LVGL/liblvgl_linux.so side (see LEA-LVGL/CMakeLists.txt).
+LVGL_EXTRA_CFLAGS=-DLV_USE_HID_ENCODER=1
 endif
 
 # ensure that changes to the compiler cause a rebuild (e.g. if user changes the CC environment variable or if yocto sdk sets a different CC than was previously used)
-ARCH_STAMP := obj/.arch
+# host builds go to obj-host/ so they never wipe the cross-build in obj/
+ifndef OBJDIR
+ifdef SDKTARGETSYSROOT
+OBJDIR=obj
+else
+OBJDIR=obj-host
+endif
+endif
+ARCH_STAMP := $(OBJDIR)/.arch
 PREV_ARCH := $(shell cat $(ARCH_STAMP) 2>/dev/null)
 ifeq ($(filter $(CC),$(PREV_ARCH)),)
-  $(shell rm -rf obj && mkdir -p obj && echo $(CC) > $(ARCH_STAMP))
+  $(shell rm -rf $(OBJDIR) && mkdir -p $(OBJDIR) && echo $(CC) > $(ARCH_STAMP))
 endif
 
 # build list of include directories
 INCS=.
 INCS+=./objects
+INCS+=./ui
+INCS+=./ui/components
 ifeq ($(SOUNDTRACK_ENABLED),1)
 INCS+=$(SOUNDTRACK_INC)
 endif
 INCS+=$(BOOST_INC)
+INCS+=$(LVGL_INC)
 INCS+=$(HOME)/LEA/WebsocketAPI/WebsocketServer
 INCS+=$(HOME)/LEA/WebsocketAPI/Objects
 INCS+=$(HOME)/LEA/WebsocketAPI/JSON
@@ -37,6 +72,7 @@ INC=$(INCS:%=-I %) # prefix each include directory with '-I'
 CSRC=$(wildcard *.c)
 CPPSRC=$(wildcard *.cpp)
 CPPSRC+=$(shell find ./objects -type f -name '*.cpp')
+CPPSRC+=$(shell find ./ui -type f -name '*.cpp')
 ifeq ($(SOUNDTRACK_ENABLED),1)
 CSRC+=$(SOUNDTRACK_DIR)/src/audio_output_alsa.c
 VPATH+=: $(SOUNDTRACK_DIR)/src
@@ -44,6 +80,10 @@ else
 CPPSRC:=$(filter-out ./objects/Soundtrack.cpp,$(CPPSRC))
 endif
 VPATH+=: ./objects
+VPATH+=: ./ui
+VPATH+=: ./ui/components
+VPATH+=: ./ui/fonts
+VPATH+=: ./ui/icons
 CPPSRC+=$(shell find $(HOME)/LEA/WebsocketAPI/WebsocketServer -type f -name '*.cpp')
 VPATH+=: $(HOME)/LEA/WebsocketAPI/WebsocketServer
 CPPSRC+=$(shell find $(HOME)/LEA/WebsocketAPI/Objects -type f -name '*.cpp')
@@ -52,7 +92,6 @@ CPPSRC+=$(shell find $(HOME)/LEA/WebsocketAPI/JSON -type f -name '*.cpp')
 VPATH+=: $(HOME)/LEA/WebsocketAPI/JSON
 
 # build list of objects and dependencies
-OBJDIR=obj
 CPPOBJS=$(notdir $(CPPSRC:%.cpp=%.o))         # list of c++ objects sans directories
 CPPOBJ=$(patsubst %, $(OBJDIR)/%, $(CPPOBJS)) # list of c++ objects prefixed with '$(OBJDIR)/'
 COBJS=$(notdir $(CSRC:%.c=%.o))               # list of c objects sans directories
@@ -66,6 +105,8 @@ BIN=$(OBJDIR)/application-server
 COMPFLAGS=-g -pthread -Wno-psabi -O0 -Wno-unused-result
 COMPFLAGS+=-DSAMPLE_RATE=96e3f
 COMPFLAGS+=-DSOUNDTRACK_ENABLED=$(SOUNDTRACK_ENABLED)
+COMPFLAGS+=-DLV_LINUX_BACKEND=\"$(LVGL_BACKEND)\"
+COMPFLAGS+=$(LVGL_EXTRA_CFLAGS)
 
 # Prefer ALSA backend on target when headers are available in SDK sysroot.
 ifeq ($(SOUNDTRACK_ENABLED),1)
@@ -80,6 +121,8 @@ endif
 CPPFLAGS=-x c++ -std=c++1z -DBOOST_BIND_GLOBAL_PLACEHOLDERS -DBOOST_ASIO_USE_TS_EXECUTOR_AS_DEFAULT
 OUTPUT_OPTION=-MMD -MP -o $@
 LDLIBS=-lm -lpthread -lgcc -lstdc++ -lrt -L$(BOOST_LIB) -lboost_system -lboost_filesystem -llmdb -lssl -lcrypto -ldl -lcurl
+LDLIBS+=-L$(LVGL_LIB) -llvgl_linux -llvgl $(LVGL_EXTRA_LDLIBS)
+LDFLAGS+=$(LVGL_EXTRA_LDFLAGS)
 
 ifeq ($(SOUNDTRACK_ENABLED),1)
 LDLIBS+=-L$(SOUNDTRACK_LIB) -lsplayer-1

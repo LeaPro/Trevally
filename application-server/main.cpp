@@ -23,6 +23,7 @@
 #include <TcpServer.h>
 #include "objects/objects.h"
 #include "gpio.h"
+#include "lvgl_ui.h"
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdint.h>
@@ -94,24 +95,57 @@ int main(int argc, char *argv[])
         kvsDirectory = "/mnt/data/kvs.mdb";
       }
     }
-    printf("Using KVS directory %s\n", kvsDirectory.c_str());
+    #else
+    // host/dev build: keep the store in the user's data dir (a shared /tmp path can be
+    // owned by another user, e.g. after running under sudo, and then fails to open)
+    {
+      const char *xdg = getenv("XDG_DATA_HOME");
+      const char *home = getenv("HOME");
+      string base = (xdg && *xdg) ? string(xdg) : (home && *home) ? string(home) + "/.local/share" : "";
+      if (!base.empty())
+      {
+        boost::system::error_code ec;
+        boost::filesystem::create_directories(base + "/trevally", ec);
+        if (!ec) kvsDirectory = base + "/trevally/kvs.mdb";
+      }
+    }
     #endif
+    printf("Using KVS directory %s\n", kvsDirectory.c_str());
     KeyValueStore kvs(kvsDirectory);
 
     // create the root of the object hierarchy tree 
     root = make_shared<RootObject>(&kvs);
     // populate the leaves of the tree
+    root->addLeaf<UAC>("/UAC");
     root->addLeaf<Discovery>("/discovery");
     root->addLeaf<Bluetooth>("/bluetooth");
     root->addLeaf<Misc>("/misc");
+    root->addLeaf<Ethernet>("/network/ethernet");
     root->addLeaf<Test>("/test");
+    root->addLeaf<Logs>("/logs");
+    root->addLeaf<Tech>("/tech");
+    root->addLeaf<DeviceInfo>("/deviceInfo");
     root->addLeaf<Files>("/files");
-    root->addLeaf<CustomChannels>("/customchannels");
+    root->addLeaf<CustomChannels>("/customChannels");
+    root->addLeaf<Screens>("/screens");
+    root->addLeaf<Tiles>("/tiles");
+    root->addLeaf<LeaOutput>("/leaOutput");
+    root->addLeaf<LeaInput>("/leaInput");
+    root->addLeaf<LeaControl>("/leaControl");
+    root->addLeaf<LeaSensor>("/leaSensor");
+    root->addLeaf<Appearance>("/appearance");
+    root->addLeaf<Backlight>("/backlight");
+    root->addLeaf<DateTime>("/dateTime");
+    root->addLeaf<Themes>("/themes");
+    root->addLeaf<Weather>("/weather");
     #if SOUNDTRACK_ENABLED
     root->addLeaf<Soundtrack>("/soundtrack");
     #endif
     // initialize object hierarchy (includes RootObject::restore())
     root->initialize();
+
+    // schedule the LVGL UI's init + timer/task loop onto io_context
+    lvglUiInit(io_context, root);
 
     // create servers
     WebsocketServer server1(root, io_context, address, port);
@@ -139,6 +173,7 @@ int main(int argc, char *argv[])
     if (io_context.stopped())
       io_context.restart();
     io_context.run();
+    lvglUiShutdown();
   }
   catch (std::exception &e)
   {
