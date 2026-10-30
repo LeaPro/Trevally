@@ -21,6 +21,21 @@ public:
 private:
   void syncVolume();
   void updateConnectedDevice();
+  void updateTrackMetadata();
+  void syncPlayback();
+  void handleTrackButtons();
+  bool ensurePlayerPath();
+  std::shared_ptr<BoolControl> playingPtr;
+  std::shared_ptr<BoolControl> nextPtr;
+  std::shared_ptr<BoolControl> previousPtr;
+  bool playing = false;                      // last playback state seen on / sent to the phone
+  std::chrono::steady_clock::time_point lastStatusPoll{};
+  std::chrono::steady_clock::time_point statusHoldUntil{}; // after a command, don't poll until the phone had time to apply it
+  std::shared_ptr<StringSensor> trackTitlePtr;
+  std::shared_ptr<StringSensor> trackArtistPtr;
+  std::shared_ptr<StringSensor> trackAlbumPtr;
+  std::string playerPath;                    // cached BlueZ MediaPlayer1 object path (empty when none)
+  std::chrono::steady_clock::time_point lastTrackPoll{};
   std::shared_ptr<UInt32Control> volumePtr;
   std::shared_ptr<BoolControl> enableExternalPairingPtr;
   std::shared_ptr<StringSensor> connectedDevicePtr;

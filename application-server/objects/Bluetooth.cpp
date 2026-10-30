@@ -14,6 +14,9 @@
 static constexpr std::chrono::seconds VOLUME_POLL_INTERVAL{1};       // BlueALSA PCM volume / connected device
 static constexpr std::chrono::seconds PAIRED_POLL_INTERVAL{5};       // pairedDevices
 static constexpr std::chrono::seconds DISCOVERED_POLL_INTERVAL{2};   // discoveredDevices while scanning
+static constexpr std::chrono::seconds TRACK_POLL_INTERVAL{2};        // track metadata of the connected phone
+static constexpr std::chrono::seconds STATUS_POLL_INTERVAL{1};       // playing / paused state of the connected phone
+static constexpr std::chrono::seconds STATUS_HOLD{2};                // grace period after a play/pause command before polling again
 static constexpr std::chrono::milliseconds PAIRING_CODE_POLL_INTERVAL{250};
 static const char *const PAIRING_CODE_FILE = "/run/trevally-bt-passkey"; // written by trevally-bt-agent during numeric comparison
 static constexpr size_t MAC_LENGTH = 17;                             // length of "AA:BB:CC:DD:EE:FF"
@@ -95,6 +98,98 @@ static std::string macFromPcmPath(const std::string &path)
       return "";
   }
   return mac;
+}
+
+// Finds the BlueZ MediaPlayer1 object of a connected device, e.g. /org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF/player0 (mac is validated)
+static std::string findPlayerPath(const std::string &mac)
+{
+  std::string devPart = mac;
+  for (char &c : devPart)
+    if (c == ':')
+      c = '_';
+  const std::string prefix = "/dev_" + devPart + "/player";
+  std::istringstream lines(runCapture("busctl --system tree org.bluez --list 2>/dev/null"));
+  std::string line;
+  while (std::getline(lines, line))
+  {
+    while (!line.empty() && std::isspace(static_cast<unsigned char>(line.back())))
+      line.pop_back();
+    if (line.find(prefix) != std::string::npos && isSafeDbusPath(line))
+      return line;
+  }
+  return "";
+}
+
+// Reads the next busctl token: a quoted string (with \" and \\ escapes) or a bare word. Returns false at the end of the input.
+static bool nextBusctlToken(const std::string &s, size_t &pos, std::string &token, bool &quoted)
+{
+  while (pos < s.size() && std::isspace(static_cast<unsigned char>(s[pos])))
+    pos++;
+  if (pos >= s.size())
+    return false;
+  token.clear();
+  quoted = s[pos] == '"';
+  if (quoted)
+  {
+    pos++;
+    while (pos < s.size() && s[pos] != '"')
+    {
+      if (s[pos] == '\\' && pos + 1 < s.size())
+        pos++;
+      token += s[pos++];
+    }
+    if (pos < s.size())
+      pos++; // closing quote
+  }
+  else
+  {
+    while (pos < s.size() && !std::isspace(static_cast<unsigned char>(s[pos])))
+      token += s[pos++];
+  }
+  return true;
+}
+
+// Reads the Title / Artist / Album of the player's current track. Output of the Track property (a{sv}) looks like:
+//   a{sv} 3 "Title" s "Song" "Artist" s "Band" "Duration" u 215000
+static void readTrack(const std::string &playerPath, std::string &title, std::string &artist, std::string &album)
+{
+  title.clear();
+  artist.clear();
+  album.clear();
+  const std::string out = runCapture("busctl --system get-property org.bluez " + playerPath + " org.bluez.MediaPlayer1 Track 2>/dev/null");
+  size_t pos = 0;
+  std::string tok;
+  bool quoted = false;
+  if (!nextBusctlToken(out, pos, tok, quoted) || !nextBusctlToken(out, pos, tok, quoted)) // skip "a{sv}" and the entry count
+    return;
+  std::string key, type, value;
+  while (nextBusctlToken(out, pos, key, quoted) && quoted && nextBusctlToken(out, pos, type, quoted) && nextBusctlToken(out, pos, value, quoted))
+  {
+    if (key == "Title")
+      title = value;
+    else if (key == "Artist")
+      artist = value;
+    else if (key == "Album")
+      album = value;
+  }
+}
+
+// 1 if the player reports Status "playing", 0 for any other status, -1 if the player is unavailable. Output looks like: s "playing"
+static int readPlayerPlaying(const std::string &playerPath)
+{
+  const std::string out = runCapture("busctl --system get-property org.bluez " + playerPath + " org.bluez.MediaPlayer1 Status 2>/dev/null");
+  size_t pos = 0;
+  std::string type, value;
+  bool quoted = false;
+  if (!nextBusctlToken(out, pos, type, quoted) || type != "s" || !nextBusctlToken(out, pos, value, quoted))
+    return -1;
+  return value == "playing" ? 1 : 0;
+}
+
+// Calls a MediaPlayer1 method (Play, Pause, Next, Previous) in the background; method is always a literal and playerPath a validated D-Bus path
+static void callPlayerMethod(const std::string &playerPath, const char *method)
+{
+  system(("(busctl --system call org.bluez " + playerPath + " org.bluez.MediaPlayer1 " + method + ") >/dev/null 2>&1 &").c_str());
 }
 
 // Looks up the friendly name of a device via bluetoothctl; falls back to the MAC address
@@ -302,6 +397,16 @@ Bluetooth::Bluetooth(std::string path, Object *parent) : LeafObject(path, parent
   name = "connectedDevice"; elements[name] = connectedDevicePtr = std::make_shared<StringSensor>(path + "/" + name, this, ""/*default*/, 160/*maxLength*/);
   // Numeric-comparison code (digits) of the pairing in progress that the other device shows too; empty when there is none
   name = "pairingCode"; elements[name] = pairingCodePtr = std::make_shared<StringSensor>(path + "/" + name, this, ""/*default*/, 16/*maxLength*/);
+  // Metadata of the track the connected phone is playing (AVRCP); empty when nothing is connected or the phone sends none
+  name = "trackTitle"; elements[name] = trackTitlePtr = std::make_shared<StringSensor>(path + "/" + name, this, ""/*default*/, 128/*maxLength*/);
+  name = "trackArtist"; elements[name] = trackArtistPtr = std::make_shared<StringSensor>(path + "/" + name, this, ""/*default*/, 128/*maxLength*/);
+  name = "trackAlbum"; elements[name] = trackAlbumPtr = std::make_shared<StringSensor>(path + "/" + name, this, ""/*default*/, 128/*maxLength*/);
+  // true while the connected phone is playing, false when paused/stopped/not connected. Two-way like volume: changes on the phone
+  // are mirrored here, and writing it plays/pauses the phone.
+  name = "playing"; elements[name] = playingPtr = std::make_shared<BoolControl>(path + "/" + name, this, false/*default*/, false/*persist*/);
+  // true: skip to the next / previous track on the phone; resets to false right away
+  name = "next"; elements[name] = nextPtr = std::make_shared<BoolControl>(path + "/" + name, this, false/*default*/, false/*persist*/);
+  name = "previous"; elements[name] = previousPtr = std::make_shared<BoolControl>(path + "/" + name, this, false/*default*/, false/*persist*/);
 }
 
 Bluetooth::~Bluetooth()
@@ -327,7 +432,98 @@ void Bluetooth::updateConnectedDevice()
   if (mac == connectedMac)
     return;
   connectedMac = mac;
+  playerPath.clear();
   connectedDevicePtr->set(mac.empty() ? "" : formatDevice(readDeviceName(mac), mac));
+}
+
+// Mirrors the connected phone's current track (BlueZ MediaPlayer1) into the track* elements
+void Bluetooth::updateTrackMetadata()
+{
+  const auto now = std::chrono::steady_clock::now();
+  if (now - lastTrackPoll < TRACK_POLL_INTERVAL)
+    return;
+  lastTrackPoll = now;
+
+  std::string title, artist, album;
+  if (ensurePlayerPath())
+    readTrack(playerPath, title, artist, album);
+  trackTitlePtr->set(title);
+  trackArtistPtr->set(artist);
+  trackAlbumPtr->set(album);
+}
+
+// True if the connected phone has a MediaPlayer1 object (playerPath is then set); looks it up when not cached
+bool Bluetooth::ensurePlayerPath()
+{
+  if (playerPath.empty() && !connectedMac.empty()) // playerPath is cleared whenever connectedMac changes
+    playerPath = findPlayerPath(connectedMac);
+  return !playerPath.empty();
+}
+
+// Two-way sync between the playing element and the phone's player Status, like syncVolume()
+void Bluetooth::syncPlayback()
+{
+  const auto now = std::chrono::steady_clock::now();
+  const bool userChanged = playingPtr->isModified(); // clears the flag
+  if (userChanged)
+  {
+    // elements start out flagged as modified: only act when the request differs from the known state
+    const bool requested = playingPtr->get();
+    if (requested != playing)
+    {
+      if (ensurePlayerPath())
+      {
+        callPlayerMethod(playerPath, requested ? "Play" : "Pause");
+        playing = requested;
+        statusHoldUntil = now + STATUS_HOLD; // keep the requested value until the phone has applied it
+      }
+      else
+      {
+        playingPtr->set(playing); // no player to command: put the element back
+        playingPtr->isModified();
+      }
+    }
+    lastStatusPoll = now;
+    return;
+  }
+  if (now - lastStatusPoll < STATUS_POLL_INTERVAL || now < statusHoldUntil)
+    return;
+  lastStatusPoll = now;
+
+  int status = -1;
+  if (ensurePlayerPath())
+  {
+    status = readPlayerPlaying(playerPath);
+    if (status < 0)
+      playerPath.clear(); // player gone or replaced; rediscover next time
+  }
+  const bool nowPlaying = status == 1;
+  if (nowPlaying != playing)
+  {
+    // changed on the phone: mirror it, and clear the resulting modified flag so it is not echoed back
+    playing = nowPlaying;
+    playingPtr->set(nowPlaying);
+    playingPtr->isModified();
+  }
+}
+
+// next / previous: momentary controls that skip the phone's track
+void Bluetooth::handleTrackButtons()
+{
+  const std::pair<std::shared_ptr<BoolControl> *, const char *> buttons[] = {{&nextPtr, "Next"}, {&previousPtr, "Previous"}};
+  for (const auto &b : buttons)
+  {
+    const std::shared_ptr<BoolControl> &ptr = *b.first;
+    if (!ptr->isModified())
+      continue;
+    const bool requested = ptr->get();
+    ptr->set(false);
+    if (requested && ensurePlayerPath())
+    {
+      callPlayerMethod(playerPath, b.second);
+      lastTrackPoll = {}; // refresh the track metadata on the next update
+    }
+  }
 }
 
 // Two-way sync between the volume element (0-100 %) and the BlueALSA PCM Volume (0-127)
@@ -377,6 +573,9 @@ void Bluetooth::update(bool sensorsOnly, bool refreshVolatileElements)
 {
   syncVolume();
   updateConnectedDevice();
+  handleTrackButtons();
+  syncPlayback();
+  updateTrackMetadata();
   // refreshVolatileElements is never set by the framework, so also poll the paired devices periodically
   const auto now = std::chrono::steady_clock::now();
   if (now - lastPairingCodePoll >= PAIRING_CODE_POLL_INTERVAL)
