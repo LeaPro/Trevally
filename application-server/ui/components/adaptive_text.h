@@ -9,10 +9,6 @@
 #include "lvgl/lvgl.h"
 #include <stdint.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /*
  * Sets label text and applies adaptive behavior:
  * - wraps when text fits within max_wrap_lines
@@ -21,9 +17,5 @@ extern "C" {
 void ui_adaptive_text_set(lv_obj_t *label,
                           const char *text,
                           uint8_t max_wrap_lines);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* ADAPTIVE_TEXT_H */

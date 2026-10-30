@@ -16,10 +16,6 @@
 
 #define SCROLL_MAX_SCREENS 16
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /** Create the pane and build its screens from the Screens leaf. */
 lv_obj_t *scroll_pane_create(lv_obj_t *parent);
 
@@ -34,9 +30,5 @@ int  scroll_pane_get_screen(lv_obj_t *pane);
 
 /** Name of the current screen ("" if there are none). Valid until the pane is refreshed. */
 const char *scroll_pane_get_screen_name(lv_obj_t *pane);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* SCROLL_PANE_H */

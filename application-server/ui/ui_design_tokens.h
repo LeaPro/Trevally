@@ -113,10 +113,6 @@ enum class level_gauge_style_t
 #define THEME_LIGHT_BG_TERTIARY   lv_color_hex(0x3A3C40)
 #define THEME_LIGHT_ICON_PRIMARY  lv_color_hex(0x111111)
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 lv_color_t ui_get_background_color(void);
 lv_color_t ui_get_brand_color(void);
 lv_color_t ui_get_text_primary_color(void);
@@ -157,10 +153,6 @@ lv_style_t *ui_theme_get_style_knob_border(void);
  * for detecting when Appearance::themePtr or the theme leaf's config has
  * changed and calling this. */
 void ui_design_tokens_refresh(void);
-
-#ifdef __cplusplus
-}
-#endif
 
 /* ========================================================================
  * ICONS - themed PNG icon set, ported from the old lv_port_linux
@@ -207,15 +199,7 @@ struct ui_icon_config_t
   const char *fallback_symbol;
 };
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 lv_obj_t *ui_icon_create(lv_obj_t *parent, ui_icon_config_t config);
-
-#ifdef __cplusplus
-}
-#endif
 
 #define UI_ICON_CREATE_DEFAULT(parent, icon_type) \
   ui_icon_create((parent), ui_icon_config_t{ (icon_type), nullptr })
@@ -226,7 +210,6 @@ lv_obj_t *ui_icon_create(lv_obj_t *parent, ui_icon_config_t config);
 // key's "colors" object. Does NOT poll for changes itself - call
 // ui_design_tokens_refresh() whenever Appearance::themePtr or the Themes
 // leaf's config changes (lvgl_ui.cpp owns that polling). Call once, before
-// creating any UI that reads the tokens above. Not in the extern "C" block
-// above since shared_ptr is a C++-only type.
+// creating any UI that reads the tokens above.
 void ui_design_tokens_init(std::shared_ptr<Appearance> appearance, std::shared_ptr<Themes> themes);
 

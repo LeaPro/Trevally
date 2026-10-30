@@ -77,11 +77,6 @@ typedef struct {
     void* user_data;             // User data passed to both callbacks
 } picker_wheel_props_t;
 
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /**
  * @brief Create a picker wheel component
  * @param parent Parent object (usually lv_screen_active())
@@ -134,9 +129,5 @@ bool picker_wheel_set_items(lv_obj_t* picker, const picker_wheel_item_t* items,
 void picker_wheel_click(lv_obj_t* picker);
 
 void picker_wheel_set_press_active(lv_obj_t* picker, bool active);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif // PICKER_WHEEL_H
