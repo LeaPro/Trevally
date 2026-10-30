@@ -26,7 +26,9 @@
 #include "ui/components/info_list.h"
 #include "ui/components/level_gauge.h"
 #include "ui/components/picker_wheel.h"
+#include "ui/components/qr_code.h"
 #include "ui/components/scroll_pane.h"
+#include "ui/components/setup_page.h"
 #include "ui/nav.h"
 #include "ui/components/tile.h"
 #include "ui/ui_design_tokens.h"
@@ -449,6 +451,47 @@ static void updateAboutValues()
     info_list_set_value(aboutList, row, aboutRowValue(row).c_str());
 }
 
+// Advanced page: points the user to the device's web UI, where the advanced settings are
+// made. A QR code encodes http://<ip>; with no network there is no address to send them to.
+static void openAdvancedPage()
+{
+  nav_page_t page = nav_screen_create();
+
+  const header_slot_t back  = {true,  UI_ICON_ARROW_BACK, nav_back_cb, nullptr};
+  const header_slot_t empty = {false, UI_ICON_SETTINGS,   nullptr,     nullptr};
+  header_create(page.screen, back, "Advanced", empty);
+
+  const std::string cidr = tile_read_string(ETHERNET, "ip");
+  const std::string ip = cidr.substr(0, cidr.find('/'));
+  const bool connected = !ip.empty() && ip != "-";
+
+  lv_obj_t *content = lv_obj_create(page.screen);
+  lv_obj_remove_style_all(content);
+  lv_obj_set_size(content, ui_content_w(), ui_pane_h());
+  lv_obj_align(content, LV_ALIGN_TOP_LEFT, 0, UI_HEADER_H_PX);
+  lv_obj_clear_flag(content, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(content, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_flex_flow(content, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(content, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_top(content, 16, 0);
+  lv_obj_set_style_pad_hor(content, 48, 0);
+  lv_obj_set_style_pad_row(content, 48, 0);
+
+  lv_obj_t *body = lv_label_create(content);
+  lv_obj_set_width(body, LV_PCT(100));
+  lv_label_set_long_mode(body, LV_LABEL_LONG_MODE_WRAP);
+  lv_obj_add_style(body, ui_theme_get_style_text_primary(), 0);
+  lv_obj_set_style_text_font(body, &satoshi_medium_24, 0);
+  lv_obj_set_style_text_align(body, LV_TEXT_ALIGN_CENTER, 0);
+  lv_label_set_text(body, connected ? ("Scan the QR code to configure your CSTouch, or visit " + ip).c_str()
+                                    : "Please check your ethernet connection");
+
+  if (connected)
+    qr_code_create(content, ("http://" + ip).c_str());
+
+  nav_push(page);
+}
+
 // A tap on a row, or an encoder press released on it, opens that row's page.
 static void settingsRowActivatedCb(int index, void *)
 {
@@ -458,6 +501,7 @@ static void settingsRowActivatedCb(int index, void *)
   case SETTINGS_ROW_BLUETOOTH:  tile_bluetooth_devices_open(SETTINGS_ROW_NAMES[SETTINGS_ROW_BLUETOOTH]); break;
   case SETTINGS_ROW_NETWORK:    openNetworkPage();    break;
   case SETTINGS_ROW_APPEARANCE: openAppearancePage(); break;
+  case SETTINGS_ROW_ADVANCED:   openAdvancedPage();   break;
   case SETTINGS_ROW_ABOUT:      openAboutPage();      break;
   case SETTINGS_ROW_REBOOT:
     if (miscLeaf && miscLeaf->rebootPtr)
@@ -629,6 +673,46 @@ static void buildSettings()
   lv_obj_add_event_cb(settingsDest.focus, settingsEncoderCb, LV_EVENT_PRESS_LOST, settingsPicker);
 }
 
+// Setup destination: shown instead of home while /misc/setupMode is set (the device has not
+// been configured yet). It tells the user whether the device has a network and, if so, shows
+// a QR code leading to its web UI. It has no way out: it is left when setupMode is cleared.
+static nav_dest_t setupDest;
+static lv_obj_t *setupContent;
+static bool setupActive;
+
+static void buildSetup()
+{
+  setupDest = nav_screen_create();
+  setupContent = setup_page_create(setupDest.screen);
+}
+
+static void updateSetupScreen()
+{
+  if (setupContent)
+    setup_page_set_ip(setupContent, tile_read_string(ETHERNET, "ip").c_str());
+}
+
+// Follows /misc/setupMode: goes to the setup destination when it is set, back home when cleared.
+static void updateSetupMode()
+{
+  const bool wanted = miscLeaf && miscLeaf->setupModePtr && miscLeaf->setupModePtr->get();
+  if (wanted != setupActive && setupDest.screen && homePane)
+  {
+    setupActive = wanted;
+    if (wanted)
+    {
+      updateSetupScreen();
+      nav_goto(setupDest, false);
+    }
+    else
+    {
+      nav_goto({homeScreen, homePane}, false);
+    }
+  }
+  if (setupActive)
+    updateSetupScreen();
+}
+
 // Applies a changed orientation: closes any open page, tears down everything whose
 // layout depends on the orientation, rotates the display, and builds it again.
 static void rebuildForOrientation()
@@ -640,6 +724,12 @@ static void rebuildForOrientation()
     lv_obj_delete(settingsDest.screen);
     settingsDest = {nullptr, nullptr};
   }
+  if (setupDest.screen)
+  {
+    lv_obj_delete(setupDest.screen);
+    setupDest = {nullptr, nullptr};
+    setupContent = nullptr;
+  }
   scroll_pane_destroy(homePane);
   lv_obj_delete(homeHeader);
   homePane = nullptr;
@@ -648,6 +738,12 @@ static void rebuildForOrientation()
   applyOrientation();
   buildHome();
   buildSettings();
+  buildSetup();
+  if (setupActive)
+  {
+    updateSetupScreen();
+    nav_goto(setupDest, false);
+  }
 }
 
 // Runs one LVGL timer/task tick, then reschedules itself on the timer's io_context after
@@ -693,6 +789,7 @@ static void scheduleLvglTick(std::shared_ptr<boost::asio::steady_timer> timer,
     updateScreenTitle(homeHeader, homePane);
   }
   tile_live_update();
+  updateSetupMode();
   updateSettingsValues();
   updateNetworkValues();
   updateAppearanceValues();
@@ -835,11 +932,13 @@ void lvglUiInit(boost::asio::io_context &io_context, std::shared_ptr<RootObject>
   applyOrientation();
   buildHome();
   buildSettings();
+  buildSetup();
+  updateSetupMode();   // open on the setup screens, not home, if the device is not configured yet
 
   // LVGL only flushes what changed, so on the framebuffer backend whatever was in the
   // framebuffer before the app started (boot splash, console, garbage after a reboot)
   // survives wherever the UI draws nothing new. Redraw the whole screen once, now.
-  lv_obj_invalidate(homeScreen);
+  lv_obj_invalidate(lv_screen_active());
   lv_refr_now(nullptr);
 
   auto timer = std::make_shared<boost::asio::steady_timer>(io_context);

@@ -20,7 +20,9 @@ Misc::Misc(string path, Object *parent) : LeafObject(path, parent)
   string name;
   name = "reboot"; elements[name] = rebootPtr = std::make_shared<BoolControl>(path + "/" + name, this, false/*default*/, false/*persistent*/);
   name = "factoryReset"; elements[name] = factoryResetPtr = std::make_shared<BoolControl>(path + "/" + name, this, false/*default*/, false/*persistent*/);
+  name = "fwUpdateStatus"; elements[name] = fwUpdateStatusPtr = std::make_shared<StringSensor>(path + "/" + name, this, ""/*default*/, 64/*maxLength*/);
   name = "ledTest"; elements[name] = ledTestPtr = std::make_shared<BoolControl>(path + "/" + name, this, false/*default*/, false/*persistent*/);
+  name = "setupMode"; elements[name] = setupModePtr = std::make_shared<BoolControl>(path + "/" + name, this, true/*default*/, true/*persistent*/);
   class SubscriptionPeriodControl final : public FloatControl
   {
   public:

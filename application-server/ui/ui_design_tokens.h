@@ -90,6 +90,11 @@ enum class level_gauge_style_t
   ELLIPSE
 };
 
+/* Status text colors (Figma text-success / text-error). Not part of the theme palettes: the
+ * same in every theme. */
+#define UI_COLOR_TEXT_SUCCESS     lv_color_hex(0xAEE076)
+#define UI_COLOR_TEXT_ERROR       lv_color_hex(0xFDA29B)
+
 /* Built-in "dark"/"light" palettes - the only two theme with colors
  * compiled into firmware. Any other theme key is a custom theme and its
  * colors are read at runtime from the theme leaf's config[key].colors

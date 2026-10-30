@@ -15,7 +15,9 @@ public:
 
   std::shared_ptr<BoolControl> rebootPtr;
   std::shared_ptr<BoolControl> factoryResetPtr;
+  std::shared_ptr<StringSensor> fwUpdateStatusPtr;
   std::shared_ptr<BoolControl> ledTestPtr;
+  std::shared_ptr<BoolControl> setupModePtr;
 
 private:
   // PILOTFISH-QUAD-v128.syscfg: GPIO1_3_FACTORY_RESET -> RGMII2_RD0 (main_gpio1 pin 3)
