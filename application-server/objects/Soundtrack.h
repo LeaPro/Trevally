@@ -39,7 +39,7 @@ private:
   void syncPairingResult();
   void syncTroubles();
   void syncMetadata();
-  void syncAlbumImage();
+  void syncAlbumArt();
   void clearTrack();
   void handleControls();
   const char *authStatusToString(int status) const;
@@ -72,8 +72,7 @@ private:
   std::shared_ptr<StringSensor> trackAlbumPtr;
   std::shared_ptr<UInt32Sensor> trackDurationPtr;
   std::shared_ptr<UInt32Sensor> trackPositionPtr;
-  std::shared_ptr<StringSensor> trackArtThumbnailPtr;
-  std::shared_ptr<StringSensor> trackArtPtr;
+  std::shared_ptr<StringSensor> trackAlbumArtPtr;
   std::shared_ptr<JsonSensor> libraryPtr;
   std::shared_ptr<JsonSensor> troublesPtr;
   std::shared_ptr<StringSensor> lastErrorPtr;
@@ -90,13 +89,13 @@ private:
   splayer_t *splayer = nullptr;
   bool sdkInitialized = false;
   bool restorePlayStatePending = false;
-  std::string albumImageUri;                 // album art URI of the current track (an https URL on the Soundtrack CDN)
-  std::string albumImageFile;                // published image file; empty when none
-  bool albumImagePending = false;            // the image for albumImageUri is still to be downloaded and published
-  int albumImageAttempts = 0;
-  std::future<std::string> albumImageDownload; // worker downloading albumImageDownloadUri; result is the file or empty
-  std::string albumImageDownloadUri;
-  std::chrono::steady_clock::time_point lastAlbumImageAttempt{};
+  std::string albumArtUri;                   // album art URI of the current track (an https URL on the Soundtrack CDN)
+  std::string albumArtFile;                  // published album art file; empty when none
+  bool albumArtPending = false;              // the album art for albumArtUri is still to be downloaded and published
+  int albumArtAttempts = 0;
+  std::future<std::string> albumArtDownload; // worker downloading albumArtDownloadUri; result is the file or empty
+  std::string albumArtDownloadUri;
+  std::chrono::steady_clock::time_point lastAlbumArtAttempt{};
   bool wasEnabled = false;
   std::future<bool> reachabilityProbe;
   std::chrono::steady_clock::time_point lastReachabilityProbe{};

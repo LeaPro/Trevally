@@ -5,7 +5,7 @@
 
 #include "now_playing_ribbon.h"
 #include "audio_source.h"
-#include "cover_art.h"
+#include "album_art.h"
 #include "equalizer.h"
 #include "play_button.h"
 #include "tile.h"
@@ -87,7 +87,7 @@ lv_obj_t *now_playing_ribbon_create(lv_obj_t *parent, int w, lv_event_cb_t on_ar
     r->root      = rootObj;
     r->titleMaxW = w - RIBBON_TEXT_X - RIBBON_PLAY_SLOT_W;
 
-    lv_obj_t *art = cover_art_create(rootObj, RIBBON_ART_SIZE, RIBBON_ART_SIZE, true, RIBBON_ART_RADIUS);
+    lv_obj_t *art = album_art_create(rootObj, RIBBON_ART_SIZE, RIBBON_ART_SIZE, RIBBON_ART_RADIUS);
     lv_obj_set_pos(art, RIBBON_ART_X, RIBBON_ART_Y);
     if (on_art_tap) {
         lv_obj_add_flag(art, LV_OBJ_FLAG_CLICKABLE);

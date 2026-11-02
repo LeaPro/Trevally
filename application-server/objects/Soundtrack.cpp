@@ -1,5 +1,5 @@
 #include "objects.h"
-#include "ArtFiles.h"
+#include "AlbumArtFiles.h"
 #include <Common.h>
 #include <cassert>
 #include <cstring>
@@ -40,13 +40,12 @@ Soundtrack::Soundtrack(string path, Object *parent)
 
   name = "currentSource"; elements[name] = currentSourcePtr = std::make_shared<JsonSensor>(path + "/" + name, this, json::object());
   name = "currentTrack"; elements[name] = currentTrackPtr = std::make_shared<JsonSensor>(path + "/" + name, this, json::object());
-  // Common track schema, same as bluetooth and customChannels. trackArtThumbnail and trackArt are the same image file
-  // (the SDK delivers a single image); the file name changes with every new image; empty until the SDK has it.
+  // Common track schema, same as bluetooth and customChannels. trackAlbumArt is the path of the album art file (the SDK
+  // delivers a single image); the file name changes with every new image; empty until the SDK has it.
   name = "trackTitle"; elements[name] = trackTitlePtr = std::make_shared<StringSensor>(path + "/" + name, this, "", 128);
   name = "trackArtist"; elements[name] = trackArtistPtr = std::make_shared<StringSensor>(path + "/" + name, this, "", 128);
   name = "trackAlbum"; elements[name] = trackAlbumPtr = std::make_shared<StringSensor>(path + "/" + name, this, "", 128);
-  name = "trackArtThumbnail"; elements[name] = trackArtThumbnailPtr = std::make_shared<StringSensor>(path + "/" + name, this, "", 64);
-  name = "trackArt"; elements[name] = trackArtPtr = std::make_shared<StringSensor>(path + "/" + name, this, "", 64);
+  name = "trackAlbumArt"; elements[name] = trackAlbumArtPtr = std::make_shared<StringSensor>(path + "/" + name, this, "", 64);
   // Length of the current track and how far into it playback is, in whole seconds; 0 when there is no track
   name = "trackDuration"; elements[name] = trackDurationPtr = std::make_shared<UInt32Sensor>(path + "/" + name, this, 0, __UINT32_MAX__, 0, "s");
   name = "trackPosition"; elements[name] = trackPositionPtr = std::make_shared<UInt32Sensor>(path + "/" + name, this, 0, __UINT32_MAX__, 0, "s");
@@ -525,8 +524,8 @@ void Soundtrack::syncMetadata()
   out["isrc"] = md->isrc == nullptr ? "" : md->isrc;
   out["durationMs"] = md->duration_ms;
   out["positionSec"] = metadataApi->get_current_track_position(splayer);
-  out["albumImageUri"] = md->album_image_uri == nullptr ? "" : md->album_image_uri;
-  out["albumImageCached"] = md->is_album_image_cached;
+  out["albumArtUri"] = md->album_image_uri == nullptr ? "" : md->album_image_uri;
+  out["albumArtCached"] = md->is_album_image_cached;
 
   currentTrackPtr->set(out);
   metadataApi->free_track_metadata(md);
@@ -548,59 +547,57 @@ void Soundtrack::syncMetadata()
   const int64_t positionSec = out["positionSec"].get<int64_t>();
   trackDurationPtr->set(static_cast<uint32_t>(durationMs > 0 ? durationMs / 1000 : 0));
   trackPositionPtr->set(static_cast<uint32_t>(positionSec > 0 ? positionSec : 0));
-  const string uri = out["albumImageUri"].get<string>();
-  if (uri != albumImageUri)
+  const string uri = out["albumArtUri"].get<string>();
+  if (uri != albumArtUri)
   {
-    // a different album image: drop the old one right away, fetch the new one below
-    albumImageUri = uri;
-    albumImagePending = !uri.empty();
-    albumImageAttempts = 0;
-    lastAlbumImageAttempt = {};
-    ArtFiles::remove(albumImageFile);
-    albumImageFile.clear();
-    trackArtThumbnailPtr->set("");
-    trackArtPtr->set("");
+    // a different album art: drop the old one right away, fetch the new one below
+    albumArtUri = uri;
+    albumArtPending = !uri.empty();
+    albumArtAttempts = 0;
+    lastAlbumArtAttempt = {};
+    AlbumArtFiles::remove(albumArtFile);
+    albumArtFile.clear();
+    trackAlbumArtPtr->set("");
   }
-  syncAlbumImage();
+  syncAlbumArt();
 }
 
-// Downloads the album image of the current track from the URI the SDK reports and publishes it as a file. The SDK's own
+// Downloads the album art of the current track from the URI the SDK reports and publishes it as a file. The SDK's own
 // image cache (get_current_track_album_image) is not used: is_album_image_cached never became true. The download runs on a
 // worker thread, so the update thread is never blocked by the network.
-void Soundtrack::syncAlbumImage()
+void Soundtrack::syncAlbumArt()
 {
-  if (albumImageDownload.valid())
+  if (albumArtDownload.valid())
   {
-    if (albumImageDownload.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
+    if (albumArtDownload.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
     {
       return;
     }
-    const string file = albumImageDownload.get();
-    if (!file.empty() && albumImagePending && albumImageDownloadUri == albumImageUri)
+    const string file = albumArtDownload.get();
+    if (!file.empty() && albumArtPending && albumArtDownloadUri == albumArtUri)
     {
-      albumImagePending = false;
-      albumImageFile = file;
-      trackArtThumbnailPtr->set(file);
-      trackArtPtr->set(file);
+      albumArtPending = false;
+      albumArtFile = file;
+      trackAlbumArtPtr->set(file);
     }
     else
     {
-      ArtFiles::remove(file); // the track changed (or the source was deselected) while it was downloading
+      AlbumArtFiles::remove(file); // the track changed (or the source was deselected) while it was downloading
     }
   }
 
   const auto now = std::chrono::steady_clock::now();
-  if (!albumImagePending || albumImageAttempts >= 5 || now - lastAlbumImageAttempt < std::chrono::seconds(3))
+  if (!albumArtPending || albumArtAttempts >= 5 || now - lastAlbumArtAttempt < std::chrono::seconds(3))
   {
     return;
   }
-  lastAlbumImageAttempt = now;
-  ++albumImageAttempts;
-  albumImageDownloadUri = albumImageUri;
-  albumImageDownload = std::async(std::launch::async, [uri = albumImageUri]() { return ArtFiles::download("soundtrack", uri); });
+  lastAlbumArtAttempt = now;
+  ++albumArtAttempts;
+  albumArtDownloadUri = albumArtUri;
+  albumArtDownload = std::async(std::launch::async, [uri = albumArtUri]() { return AlbumArtFiles::download("soundtrack", uri); });
 }
 
-// Empties the track elements and removes the album image, for when Soundtrack is not the selected audio source
+// Empties the track elements and removes the album art, for when Soundtrack is not the selected audio source
 void Soundtrack::clearTrack()
 {
   trackTitlePtr->set("");
@@ -608,13 +605,12 @@ void Soundtrack::clearTrack()
   trackAlbumPtr->set("");
   trackDurationPtr->set(0);
   trackPositionPtr->set(0);
-  trackArtThumbnailPtr->set("");
-  trackArtPtr->set("");
+  trackAlbumArtPtr->set("");
   currentTrackPtr->set(json::object());
-  ArtFiles::remove(albumImageFile);
-  albumImageFile.clear();
-  albumImageUri.clear();
-  albumImagePending = false;
+  AlbumArtFiles::remove(albumArtFile);
+  albumArtFile.clear();
+  albumArtUri.clear();
+  albumArtPending = false;
 }
 
 void Soundtrack::handleControls()

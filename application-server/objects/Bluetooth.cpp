@@ -13,18 +13,11 @@ static constexpr std::chrono::seconds STATUS_HOLD{2};                // grace pe
 static constexpr std::chrono::seconds RESET_TIMEOUT{5};              // how long a reset waits for BlueZ to remove the paired devices
 static constexpr std::chrono::milliseconds PAIRING_CODE_POLL_INTERVAL{250};
 static const char *const PAIRING_CODE_FILE = "/run/trevally-bt-passkey"; // written by trevally-bt-agent during numeric comparison
-static const char *const OBEX_BUS_ADDRESS = "unix:path=/run/trevally-obex-bus"; // private session bus that obexd runs on (trevally-obex-bus.service)
-static const char *const ART_DIR = "/run/trevally-bt-art";           // where fetched cover art is written
 static constexpr size_t MAC_LENGTH = 17;                             // length of "AA:BB:CC:DD:EE:FF"
 static constexpr std::chrono::seconds PAIRING_WINDOW{60};            // how long the adapter stays pairable for a requestConnect that has to pair
 
 static const char *const BLUEZ = "org.bluez";
 static const char *const BLUEALSA = "org.bluealsa";
-static const char *const OBEX = "org.bluez.obex";
-static const char *const OBEX_PATH = "/org/bluez/obex";
-static const char *const IFACE_OBEX_CLIENT = "org.bluez.obex.Client1";
-static const char *const IFACE_OBEX_IMAGE = "org.bluez.obex.Image1";
-static const char *const IFACE_OBEX_TRANSFER = "org.bluez.obex.Transfer1";
 static const char *const IFACE_ADAPTER = "org.bluez.Adapter1";
 static const char *const IFACE_DEVICE = "org.bluez.Device1";
 static const char *const IFACE_PLAYER = "org.bluez.MediaPlayer1";
@@ -180,12 +173,9 @@ Bluetooth::Bluetooth(std::string path, Object *parent) : LeafObject(path, parent
   name = "trackTitle"; elements[name] = trackTitlePtr = std::make_shared<StringSensor>(path + "/" + name, this, ""/*default*/, 128/*maxLength*/);
   name = "trackArtist"; elements[name] = trackArtistPtr = std::make_shared<StringSensor>(path + "/" + name, this, ""/*default*/, 128/*maxLength*/);
   name = "trackAlbum"; elements[name] = trackAlbumPtr = std::make_shared<StringSensor>(path + "/" + name, this, ""/*default*/, 128/*maxLength*/);
-  // Cover of the current track: path of an image file, fetched from the phone over OBEX; empty when nothing is connected, the phone has no
-  // cover art for the track, or the image hasn't arrived yet. The file name changes with every new image.
-  // trackArtThumbnail: the phone's thumbnail, always a 200x200 JPEG (arrives first); trackArt: the native image, in whatever format and size
-  // the phone has it (JPEG, PNG, ...; the file extension tells which).
-  name = "trackArtThumbnail"; elements[name] = trackArtThumbnailPtr = std::make_shared<StringSensor>(path + "/" + name, this, ""/*default*/, 64/*maxLength*/);
-  name = "trackArt"; elements[name] = trackArtPtr = std::make_shared<StringSensor>(path + "/" + name, this, ""/*default*/, 64/*maxLength*/);
+  // trackAlbumArt: path of the album art file (a PNG of at most 500 px) of the current track, looked up on MusicBrainz / Cover Art
+  // Archive; empty when nothing is connected or the album art is unknown or hasn't arrived yet. The file name changes with every new image.
+  name = "trackAlbumArt"; elements[name] = trackAlbumArtPtr = std::make_shared<StringSensor>(path + "/" + name, this, ""/*default*/, 64/*maxLength*/);
   // Length of the current track and how far the phone is into it, in whole seconds; 0 when nothing is playing or the phone does not say
   name = "trackDuration"; elements[name] = trackDurationPtr = std::make_shared<UInt32Sensor>(path + "/" + name, this, 0, __UINT32_MAX__, 0/*default*/, "s");
   name = "trackPosition"; elements[name] = trackPositionPtr = std::make_shared<UInt32Sensor>(path + "/" + name, this, 0, __UINT32_MAX__, 0/*default*/, "s");
@@ -355,28 +345,16 @@ void Bluetooth::updateTrackMetadata()
   trackPositionPtr->set(phone ? phone->position(std::chrono::steady_clock::now()) / 1000 : 0);
 }
 
-// Mirrors the cover art of the connected phone's current track into trackArt / trackArtThumbnail; the fetching itself happens on the worker thread
-void Bluetooth::updateCoverArt()
+// Mirrors the album art of the connected phone's current track into trackAlbumArt. The phone only tells the track,
+// so the album art is looked up by artist / album / title (MusicBrainz + Cover Art Archive) on a worker thread of its own.
+void Bluetooth::updateAlbumArt()
 {
   const std::optional<Player> phone = enablePtr->get() ? player(connectedMac) : std::nullopt;
-  ArtRequest wanted;
   if (phone)
-  {
-    wanted.mac = connectedMac;
-    wanted.port = phone->obexPort;
-    wanted.handle = phone->imgHandle;
-  }
-  if (!(wanted == lastArtRequest))
-  {
-    lastArtRequest = wanted;
-    postToBus([this, wanted]()
-              {
-                artWanted_ = wanted;
-                artPump();
-              });
-  }
-  trackArtThumbnailPtr->set(coverArtFile(wanted, ART_THUMBNAIL));
-  trackArtPtr->set(coverArtFile(wanted, ART_NATIVE));
+    albumArt_.request(phone->artist, phone->album, phone->title);
+  else
+    albumArt_.request("", "", "");
+  trackAlbumArtPtr->set(albumArt_.file());
 }
 
 // isPlaying reports the phone's player status; play is the request to it and follows the phone's state (like syncVolume())
@@ -490,7 +468,7 @@ void Bluetooth::update(bool sensorsOnly, bool refreshVolatileElements)
   handleTrackButtons();
   syncPlayback(now);
   updateTrackMetadata();
-  updateCoverArt();
+  updateAlbumArt();
   syncExternalPairing(now);
   handleScan(now);
   handleRemoveDevice();
@@ -576,18 +554,7 @@ void Bluetooth::busMain()
 
   g_bus_unwatch_name(bluezWatch);
   g_bus_unwatch_name(blueAlsaWatch);
-  // closing the connection also ends our discovery session, and obexd drops our BIP session
-  if (obexConn_ != nullptr)
-  {
-    g_dbus_connection_close_sync(obexConn_, nullptr, nullptr);
-    g_object_unref(obexConn_);
-    obexConn_ = nullptr;
-  }
-  if (!artTransferFile_.empty())
-    std::remove(artTransferFile_.c_str());
-  for (const ArtImage &image : art_)
-    if (!image.file.empty())
-      std::remove(image.file.c_str());
+  // closing the connection also ends our discovery session
   g_dbus_connection_close_sync(conn_, nullptr, nullptr);
   g_object_unref(conn_);
   conn_ = nullptr;
@@ -610,7 +577,7 @@ void Bluetooth::postToBus(std::function<void()> fn)
 // Worker thread only. params is a floating GVariant tuple (or nullptr); done is called with the reply (or the error)
 void Bluetooth::busCall(const char *bus, const std::string &path, const char *iface, const char *method, GVariant *params, int timeoutMs, Reply done)
 {
-  GDBusConnection *conn = g_strcmp0(bus, OBEX) == 0 ? obexConn_ : conn_; // obexd is on its own bus
+  GDBusConnection *conn = conn_;
   if (conn == nullptr)
   {
     if (params != nullptr)
@@ -815,15 +782,12 @@ void Bluetooth::applyProperty(const std::string &path, const std::string &iface,
       p.positionMs = g_variant_get_uint32(value);
       p.positionAt = std::chrono::steady_clock::now();
     }
-    else if (key == "ObexPort" && isType(value, G_VARIANT_TYPE_UINT16))
-      p.obexPort = g_variant_get_uint16(value);
     else if (key == "Track" && isType(value, G_VARIANT_TYPE("a{sv}")))
     {
       // the property always carries the complete track: whatever is missing is empty
       p.title.clear();
       p.artist.clear();
       p.album.clear();
-      p.imgHandle.clear();
       p.durationMs = 0;
       GVariantIter track;
       const gchar *field = nullptr;
@@ -837,8 +801,6 @@ void Bluetooth::applyProperty(const std::string &path, const std::string &iface,
           p.artist = stringOf(fieldValue);
         else if (g_strcmp0(field, "Album") == 0)
           p.album = stringOf(fieldValue);
-        else if (g_strcmp0(field, "ImgHandle") == 0)
-          p.imgHandle = stringOf(fieldValue);
         else if (g_strcmp0(field, "Duration") == 0 && isType(fieldValue, G_VARIANT_TYPE_UINT32))
           p.durationMs = g_variant_get_uint32(fieldValue);
         g_variant_unref(fieldValue);
@@ -946,265 +908,6 @@ std::optional<Bluetooth::Player> Bluetooth::player(const std::string &mac) const
     if (p.second.mac == mac)
       return p.second;
   return std::nullopt;
-}
-
-std::string Bluetooth::coverArtFile(const ArtRequest &request, int kind) const
-{
-  std::lock_guard<std::mutex> lock(mutex_);
-  const ArtImage &image = art_[kind];
-  if (request.handle.empty() || image.mac != request.mac || image.handle != request.handle)
-    return "";
-  return image.file;
-}
-
-// ---------------------------------------------------------------------------------------------------------------------
-// cover art (worker thread)
-// ---------------------------------------------------------------------------------------------------------------------
-
-// Connects to the private session bus of obexd. Replies and signals of the connection are handled by the worker thread's loop.
-bool Bluetooth::obexConnect()
-{
-  if (obexConn_ != nullptr && g_dbus_connection_is_closed(obexConn_))
-  {
-    // the bus went away (restarted): its sessions are gone with it
-    g_object_unref(obexConn_);
-    obexConn_ = nullptr;
-    artSessionMac_.clear();
-    artSessionPath_.clear();
-    artFetchHandle_.clear();
-    artDropTransfer();
-  }
-  if (obexConn_ != nullptr)
-    return true;
-
-  GError *error = nullptr;
-  obexConn_ = g_dbus_connection_new_for_address_sync(
-      OBEX_BUS_ADDRESS, static_cast<GDBusConnectionFlags>(G_DBUS_CONNECTION_FLAGS_AUTHENTICATION_CLIENT | G_DBUS_CONNECTION_FLAGS_MESSAGE_BUS_CONNECTION),
-      nullptr, nullptr, &error);
-  if (obexConn_ == nullptr)
-  {
-    if (!obexUnavailableLogged_)
-      logError("connecting to the obexd bus (no cover art)", error);
-    obexUnavailableLogged_ = true;
-    if (error != nullptr)
-      g_error_free(error);
-    return false;
-  }
-  obexUnavailableLogged_ = false;
-  // a transfer ends with its Status changing to "complete" or "error"
-  g_dbus_connection_signal_subscribe(
-      obexConn_, OBEX, IFACE_PROPERTIES, "PropertiesChanged", nullptr, IFACE_OBEX_TRANSFER, G_DBUS_SIGNAL_FLAGS_NONE,
-      [](GDBusConnection *, const gchar *, const gchar *path, const gchar *, const gchar *, GVariant *parameters, gpointer self)
-      {
-        GVariant *changed = g_variant_get_child_value(parameters, 1);
-        GVariant *status = g_variant_lookup_value(changed, "Status", G_VARIANT_TYPE_STRING);
-        if (status != nullptr)
-        {
-          static_cast<Bluetooth *>(self)->artTransferChanged(path, g_variant_get_string(status, nullptr));
-          g_variant_unref(status);
-        }
-        g_variant_unref(changed);
-      },
-      this, nullptr);
-  return true;
-}
-
-// Decides the next step towards fetching the wanted cover art. Called whenever the wanted art or the state of the session / transfer changes.
-void Bluetooth::artPump()
-{
-  if (!artSessionMac_.empty() && artSessionMac_ != artWanted_.mac)
-    artEndSession(); // the phone is gone or another one: image handles of the old session mean nothing anymore
-  if (artWanted_.mac.empty() || artWanted_.port == 0 || artWanted_.handle.empty() || artWanted_.handle == artFailedHandle_)
-    return;
-  if (artSessionMac_.empty())
-    artBeginSession(); // the session is kept for the following tracks, so that their handles stay valid
-  else if (!artSessionPath_.empty() && artWanted_.handle != artFetchHandle_)
-  {
-    artDropTransfer(); // the previous track's images are no longer wanted
-    artFetchHandle_ = artWanted_.handle;
-    artNextKind_ = 0;
-    artFetched_ = 0;
-    artStartNext();
-  }
-}
-
-void Bluetooth::artBeginSession()
-{
-  const std::string handle = artWanted_.handle;
-  if (!obexConnect())
-  {
-    artFailedHandle_ = handle;
-    return;
-  }
-  const std::string mac = artWanted_.mac;
-  artSessionMac_ = mac;
-  const unsigned serial = ++artSessionSerial_;
-  GVariantBuilder args;
-  g_variant_builder_init(&args, G_VARIANT_TYPE("a{sv}"));
-  g_variant_builder_add(&args, "{sv}", "Target", g_variant_new_string("bip-avrcp"));
-  g_variant_builder_add(&args, "{sv}", "PSM", g_variant_new_uint16(artWanted_.port));
-  busCall(OBEX, OBEX_PATH, IFACE_OBEX_CLIENT, "CreateSession", g_variant_new("(sa{sv})", mac.c_str(), &args), CONNECT_TIMEOUT_MS,
-          [this, serial, handle](GVariant *result, const GError *error)
-          {
-            std::string session;
-            if (result != nullptr && error == nullptr)
-            {
-              GVariant *path = g_variant_get_child_value(result, 0);
-              session = g_variant_get_string(path, nullptr);
-              g_variant_unref(path);
-            }
-            if (serial != artSessionSerial_ || artSessionMac_.empty())
-            {
-              // abandoned while it was being created
-              if (!session.empty())
-                busCall(OBEX, OBEX_PATH, IFACE_OBEX_CLIENT, "RemoveSession", g_variant_new("(o)", session.c_str()), DEFAULT_TIMEOUT_MS);
-              return;
-            }
-            if (session.empty())
-            {
-              artFailedHandle_ = handle;
-              artSessionMac_.clear();
-            }
-            else
-              artSessionPath_ = session;
-            artPump();
-          });
-}
-
-void Bluetooth::artEndSession()
-{
-  if (!artSessionPath_.empty())
-    busCall(OBEX, OBEX_PATH, IFACE_OBEX_CLIENT, "RemoveSession", g_variant_new("(o)", artSessionPath_.c_str()), DEFAULT_TIMEOUT_MS);
-  artSessionMac_.clear();
-  artSessionPath_.clear();
-  artFetchHandle_.clear();
-  artNextKind_ = ART_KINDS;
-  artDropTransfer();
-}
-
-// The file extension for the image format that the file starts with: image decoders go by it
-static const char *imageExtension(const std::string &file)
-{
-  unsigned char head[4] = {};
-  if (FILE *f = fopen(file.c_str(), "rb"))
-  {
-    if (fread(head, 1, sizeof(head), f) != sizeof(head))
-      head[0] = 0;
-    fclose(f);
-  }
-  if (head[0] == 0xFF && head[1] == 0xD8)
-    return ".jpg";
-  if (head[0] == 0x89 && head[1] == 'P' && head[2] == 'N' && head[3] == 'G')
-    return ".png";
-  if (head[0] == 'G' && head[1] == 'I' && head[2] == 'F')
-    return ".gif";
-  if (head[0] == 'B' && head[1] == 'M')
-    return ".bmp";
-  return ".img";
-}
-
-// Starts downloading the next image kind (thumbnail, then native image) of the handle being fetched into a new file. A kind that fails is
-// skipped; when none of them could be fetched the handle is given up on.
-void Bluetooth::artStartNext()
-{
-  const std::string handle = artFetchHandle_;
-  if (artNextKind_ >= ART_KINDS)
-  {
-    if (artFetched_ == 0)
-      artFailed(handle);
-    return;
-  }
-  const int kind = artNextKind_++;
-  const std::string file = std::string(ART_DIR) + (kind == ART_THUMBNAIL ? "/thumb-" : "/cover-") + std::to_string(++artCounter_);
-  mkdir(ART_DIR, 0755);
-  artTransferKind_ = kind;
-  artTransferFile_ = file;
-  const Reply reply =
-          [this, file](GVariant *result, const GError *error)
-          {
-            std::string transfer;
-            if (result != nullptr && error == nullptr)
-            {
-              GVariant *path = g_variant_get_child_value(result, 0);
-              transfer = g_variant_get_string(path, nullptr);
-              g_variant_unref(path);
-            }
-            if (artTransferFile_ != file)
-            {
-              // superseded while obexd was starting it (the file has been deleted already)
-              if (!transfer.empty())
-                busCall(OBEX, transfer, IFACE_OBEX_TRANSFER, "Cancel", nullptr, DEFAULT_TIMEOUT_MS);
-              std::remove(file.c_str());
-              return;
-            }
-            if (transfer.empty())
-            {
-              artTransferFile_.clear();
-              artTransferKind_ = ART_KINDS;
-              artStartNext();
-              return;
-            }
-            artTransferPath_ = transfer;
-          };
-  if (kind == ART_THUMBNAIL)
-    busCall(OBEX, artSessionPath_, IFACE_OBEX_IMAGE, "GetThumbnail", g_variant_new("(ss)", file.c_str(), handle.c_str()), CONNECT_TIMEOUT_MS, reply);
-  else
-  {
-    GVariantBuilder description; // empty: the native image
-    g_variant_builder_init(&description, G_VARIANT_TYPE("a{sv}"));
-    busCall(OBEX, artSessionPath_, IFACE_OBEX_IMAGE, "Get", g_variant_new("(ssa{sv})", file.c_str(), handle.c_str(), &description), CONNECT_TIMEOUT_MS,
-            reply);
-  }
-}
-
-void Bluetooth::artDropTransfer()
-{
-  if (!artTransferPath_.empty())
-    busCall(OBEX, artTransferPath_, IFACE_OBEX_TRANSFER, "Cancel", nullptr, DEFAULT_TIMEOUT_MS);
-  if (!artTransferFile_.empty())
-    std::remove(artTransferFile_.c_str());
-  artTransferPath_.clear();
-  artTransferFile_.clear();
-  artTransferKind_ = ART_KINDS;
-}
-
-void Bluetooth::artTransferChanged(const std::string &transferPath, const std::string &status)
-{
-  if (transferPath != artTransferPath_ || (status != "complete" && status != "error"))
-    return;
-  const int kind = artTransferKind_;
-  std::string file = artTransferFile_;
-  artTransferPath_.clear();
-  artTransferFile_.clear();
-  artTransferKind_ = ART_KINDS;
-  if (status == "error")
-  {
-    fprintf(stderr, "[bluez] fetching cover art %s (%s) failed\n", artFetchHandle_.c_str(), kind == ART_THUMBNAIL ? "thumbnail" : "image");
-    std::remove(file.c_str());
-    artStartNext();
-    return;
-  }
-  const std::string named = file + imageExtension(file);
-  if (std::rename(file.c_str(), named.c_str()) == 0)
-    file = named;
-  std::string previous;
-  {
-    std::lock_guard<std::mutex> lock(mutex_);
-    previous = art_[kind].file;
-    art_[kind] = {artSessionMac_, artFetchHandle_, file}; // the file belongs to the published image now
-  }
-  if (!previous.empty())
-    std::remove(previous.c_str());
-  artFetched_++;
-  artStartNext();
-}
-
-// The image couldn't be fetched: don't retry it, and start over with a fresh session for the next one
-void Bluetooth::artFailed(const std::string &handle)
-{
-  fprintf(stderr, "[bluez] fetching cover art %s failed\n", handle.c_str());
-  artFailedHandle_ = handle;
-  artEndSession();
 }
 
 // ---------------------------------------------------------------------------------------------------------------------

@@ -8,7 +8,7 @@
  *   play               BoolControl   the request: true starts, false pauses (it may follow the source's state)
  *   trackTitle/trackArtist/trackAlbum   StringSensors, empty when there is no track
  *   trackDuration/trackPosition         UInt32Sensors, whole seconds; 0 when there is no track or the source does not say
- *   trackArtThumbnail/trackArt          StringSensors, path of an image file or empty
+ *   trackAlbumArt                      StringSensor, path of the album art file or empty
  *
  * To add a streaming provider, give its leaf that schema and add it to the table in audio_source.cpp.
  */

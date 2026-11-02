@@ -1,6 +1,6 @@
 #include "objects.h"
 #include "CustomChannelsClient.h"
-#include "ArtFiles.h"
+#include "AlbumArtFiles.h"
 #include <Common.h>
 
 #include <csignal>
@@ -207,16 +207,15 @@ CustomChannels::CustomChannels(string path, Object *parent)
 
   name = "nowPlaying"; elements[name] = nowPlayingPtr = std::make_shared<JsonSensor>(path + "/" + name, this, json::object());
   // Common track schema, same as bluetooth and soundtrack: filled from nowPlaying.metadata, empty when disabled or unknown.
-  // trackArtThumbnail / trackArt are paths of downloaded image files (albumart_small / albumart_large); the file name
-  // changes with every new image; empty until the download has finished.
+  // trackAlbumArt is the path of the downloaded album art file (the albumart_large image, else albumart_small); the file
+  // name changes with every new image; empty until the download has finished.
   name = "trackTitle"; elements[name] = trackTitlePtr = std::make_shared<StringSensor>(path + "/" + name, this, "", 128);
   name = "trackArtist"; elements[name] = trackArtistPtr = std::make_shared<StringSensor>(path + "/" + name, this, "", 128);
   name = "trackAlbum"; elements[name] = trackAlbumPtr = std::make_shared<StringSensor>(path + "/" + name, this, "", 128);
   // Length of the track and the position in it: Custom Channels does not provide them, so both stay 0
   name = "trackDuration"; elements[name] = std::make_shared<UInt32Sensor>(path + "/" + name, this, 0, __UINT32_MAX__, 0, "s");
   name = "trackPosition"; elements[name] = std::make_shared<UInt32Sensor>(path + "/" + name, this, 0, __UINT32_MAX__, 0, "s");
-  name = "trackArtThumbnail"; elements[name] = trackArtThumbnailPtr = std::make_shared<StringSensor>(path + "/" + name, this, "", 64);
-  name = "trackArt"; elements[name] = trackArtPtr = std::make_shared<StringSensor>(path + "/" + name, this, "", 64);
+  name = "trackAlbumArt"; elements[name] = trackAlbumArtPtr = std::make_shared<StringSensor>(path + "/" + name, this, "", 64);
   name = "isPlaying"; elements[name] = isPlayingPtr = std::make_shared<BoolSensor>(path + "/" + name, this, false);
   name = "play"; elements[name] = playPtr = std::make_shared<BoolControl>(path + "/" + name, this, false, true, true);
   name = "next"; elements[name] = nextPtr = std::make_shared<BoolControl>(path + "/" + name, this, false, false, true);
@@ -837,25 +836,20 @@ void CustomChannels::drainWorkerResponses()
   }
 }
 
-void CustomChannels::startArtDownload(const std::string &smallUrl, const std::string &largeUrl)
+void CustomChannels::startAlbumArtDownload(const std::string &url, const std::string &fallbackUrl)
 {
-  artDownload = std::async(std::launch::async, [smallUrl, largeUrl]() {
-    ArtDownload r;
-    r.smallUrl = smallUrl;
-    r.largeUrl = largeUrl;
-    r.smallFile = ArtFiles::download("customChannels", smallUrl);
-    // one image serves as both thumbnail and native image when the track has only one
-    r.largeFile = largeUrl == smallUrl ? r.smallFile : ArtFiles::download("customChannels", largeUrl);
-    // the server does not have every size for every album: one image then serves as both
-    if (r.smallFile.empty())
-      r.smallFile = r.largeFile;
-    else if (r.largeFile.empty())
-      r.largeFile = r.smallFile;
+  albumArtDownload = std::async(std::launch::async, [url, fallbackUrl]() {
+    AlbumArtDownload r;
+    r.url = url;
+    r.file = AlbumArtFiles::download("customChannels", url);
+    // the server does not have every size for every album
+    if (r.file.empty() && !fallbackUrl.empty() && fallbackUrl != url)
+      r.file = AlbumArtFiles::download("customChannels", fallbackUrl);
     return r;
   });
 }
 
-// Mirrors nowPlaying.metadata into the track* elements and keeps the cover art files in step with the album art URLs
+// Mirrors nowPlaying.metadata into the track* elements and keeps the album art file in step with the album art URL
 void CustomChannels::syncTrackElements()
 {
   const bool enabled = enabledPtr->get();
@@ -867,52 +861,36 @@ void CustomChannels::syncTrackElements()
   trackArtistPtr->set(jsonStringOrEmpty(md, "artist"));
   trackAlbumPtr->set(jsonStringOrEmpty(md, "album"));
 
-  string smallUrl = jsonStringOrEmpty(md, "albumart_small");
-  string largeUrl = jsonStringOrEmpty(md, "albumart_large");
-  if (smallUrl.empty())
-    smallUrl = largeUrl;
-  if (largeUrl.empty())
-    largeUrl = smallUrl;
+  // the largest album art the server has
+  const string smallUrl = jsonStringOrEmpty(md, "albumart_small");
+  const string largeUrl = jsonStringOrEmpty(md, "albumart_large");
+  const string url = largeUrl.empty() ? smallUrl : largeUrl;
+  const string fallbackUrl = largeUrl.empty() ? string() : smallUrl;
 
   // a finished download: publish it when it is still what is wanted, drop it otherwise
-  if (artDownload.valid() && artDownload.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
-    const ArtDownload r = artDownload.get();
-    if (r.smallUrl == smallUrl && r.largeUrl == largeUrl && (!r.smallFile.empty() || !r.largeFile.empty())) {
-      ArtFiles::remove(artShownSmallFile);
-      if (artShownLargeFile != artShownSmallFile)
-        ArtFiles::remove(artShownLargeFile);
-      artShownSmallUrl = r.smallUrl;
-      artShownLargeUrl = r.largeUrl;
-      artShownSmallFile = r.smallFile;
-      artShownLargeFile = r.largeFile;
+  if (albumArtDownload.valid() && albumArtDownload.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+    const AlbumArtDownload r = albumArtDownload.get();
+    if (r.url == url && !r.file.empty()) {
+      AlbumArtFiles::remove(albumArtShownFile);
+      albumArtShownUrl = r.url;
+      albumArtShownFile = r.file;
     } else {
-      ArtFiles::remove(r.smallFile);
-      if (r.largeFile != r.smallFile)
-        ArtFiles::remove(r.largeFile);
+      AlbumArtFiles::remove(r.file);
       // failed (not merely outdated): try again in a while
-      artRetryAt = (r.smallUrl == smallUrl && r.largeUrl == largeUrl) ? Clock::now() + std::chrono::seconds(15)
-                                                                       : std::chrono::steady_clock::time_point{};
+      albumArtRetryAt = (r.url == url) ? Clock::now() + std::chrono::seconds(15) : std::chrono::steady_clock::time_point{};
     }
   }
 
-  if (smallUrl.empty()) {
-    // no art for the track (or not enabled): clear what is published
-    if (!artShownSmallFile.empty() || !artShownLargeFile.empty()) {
-      ArtFiles::remove(artShownSmallFile);
-      if (artShownLargeFile != artShownSmallFile)
-        ArtFiles::remove(artShownLargeFile);
-      artShownSmallFile.clear();
-      artShownLargeFile.clear();
-    }
-    artShownSmallUrl.clear();
-    artShownLargeUrl.clear();
-  } else if (!artDownload.valid() && (smallUrl != artShownSmallUrl || largeUrl != artShownLargeUrl) &&
-             Clock::now() >= artRetryAt) {
-    startArtDownload(smallUrl, largeUrl);
+  if (url.empty()) {
+    // no album art for the track (or not enabled): clear what is published
+    AlbumArtFiles::remove(albumArtShownFile);
+    albumArtShownFile.clear();
+    albumArtShownUrl.clear();
+  } else if (!albumArtDownload.valid() && url != albumArtShownUrl && Clock::now() >= albumArtRetryAt) {
+    startAlbumArtDownload(url, fallbackUrl);
   }
 
-  trackArtThumbnailPtr->set(artShownSmallFile);
-  trackArtPtr->set(artShownLargeFile);
+  trackAlbumArtPtr->set(albumArtShownFile);
 }
 
 void CustomChannels::update(bool sensorsOnly, bool refreshVolatileElements)

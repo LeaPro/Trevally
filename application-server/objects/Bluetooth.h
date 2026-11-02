@@ -1,5 +1,6 @@
 #pragma once
 #include <object.h>
+#include "AlbumArtLookup.h"
 #include <chrono>
 #include <cstdint>
 #include <functional>
@@ -48,8 +49,6 @@ private:
     std::string mac;
     bool playing = false;
     std::string title, artist, album;
-    std::string imgHandle; // handle of the track's cover art, valid while an OBEX BIP connection to obexPort exists; empty when there is none
-    uint16_t obexPort = 0; // L2CAP PSM of the phone's OBEX (BIP) server, 0 when it has none
     uint32_t durationMs = 0;                       // length of the current track, 0 when the phone doesn't say
     uint32_t positionMs = 0;                       // playback position at positionAt
     std::chrono::steady_clock::time_point positionAt{}; // when positionMs was received / the player last started or stopped
@@ -63,13 +62,6 @@ private:
         p = durationMs;
       return static_cast<uint32_t>(p);
     }
-  };
-  // The cover art wanted by the main thread: the image of the connected phone's current track
-  struct ArtRequest
-  {
-    std::string mac, handle;
-    uint16_t port = 0;
-    bool operator==(const ArtRequest &other) const { return mac == other.mac && handle == other.handle && port == other.port; }
   };
   struct PcmInfo
   {
@@ -91,7 +83,7 @@ private:
   void updateDeviceLists();
   void updateConnectedDevice();
   void updateTrackMetadata();
-  void updateCoverArt();
+  void updateAlbumArt();
   void syncVolume();
   void syncPlayback(std::chrono::steady_clock::time_point now);
   void handleTrackButtons();
@@ -105,7 +97,6 @@ private:
   std::string streamMac() const;                   // phone that has an A2DP sink stream (BlueALSA PCM), empty when none
   int streamVolume() const;                        // volume of that stream, 0-127 (left channel); -1 when unavailable
   std::optional<Player> player(const std::string &mac) const; // media player of the device, if it has one
-  std::string coverArtFile(const ArtRequest &request, int kind) const; // image file of that kind fetched for the request, empty when it isn't available (yet)
 
   // ---- BlueZ / BlueALSA commands (asynchronous) ----
   void setPairable(bool enable);
@@ -128,20 +119,6 @@ private:
   void busSetProperty(const char *bus, const std::string &path, const char *iface, const char *name, _GVariant *value);
   void busCallDevice(const std::string &path, const char *method, int timeoutMs, Reply done = nullptr);
 
-  // ---- cover art over OBEX (worker thread) ----
-  // obexd (org.bluez.obex) runs on a private session bus. For the wanted track it keeps one BIP session to the phone and fetches the images of
-  // the current ImgHandle into files, the thumbnail first and then the native image; every step re-enters artPump(), which decides what to do
-  // next from the state below.
-  enum ArtKind { ART_THUMBNAIL = 0, ART_NATIVE = 1, ART_KINDS = 2 }; // thumbnail: always a 200x200 JPEG; native: whatever the phone has
-  bool obexConnect();                              // connects to the obexd bus if not done yet; false when unavailable
-  void artPump();
-  void artBeginSession();
-  void artEndSession();                            // removes the session and forgets everything fetched through it
-  void artStartNext();                             // starts the transfer of the next image kind of the handle being fetched, if any is left
-  void artDropTransfer();                          // cancels the transfer in flight and deletes its file
-  void artTransferChanged(const std::string &transferPath, const std::string &status);
-  void artFailed(const std::string &handle);
-
   std::string devicePath(const std::string &mac) const;
   std::string adapterPath() const;
 
@@ -156,8 +133,6 @@ private:
   _GMainContext *context_ = nullptr;
   _GMainLoop *loop_ = nullptr;
   _GDBusConnection *conn_ = nullptr;
-  _GDBusConnection *obexConn_ = nullptr;           // private session bus of obexd, connected on demand
-  bool obexUnavailableLogged_ = false;
   std::thread thread_;
 
   mutable std::mutex mutex_; // guards the cache below
@@ -167,22 +142,6 @@ private:
   std::map<std::string, Device> devices_;      // by object path
   std::map<std::string, Player> players_;      // by object path
   std::map<std::string, PcmInfo> pcms_;        // by object path; only A2DP sink PCMs
-  struct ArtImage { std::string mac, handle, file; };
-  ArtImage art_[ART_KINDS];                    // the fetched cover art: the image file for that handle of that phone
-
-  // cover art fetching state (worker thread only)
-  ArtRequest artWanted_;
-  std::string artSessionMac_;                  // phone of the OBEX session being created or established, empty when there is none
-  std::string artSessionPath_;                 // object path of the established session
-  unsigned artSessionSerial_ = 0;              // identifies the session being created, so that replies for abandoned attempts are recognised
-  std::string artFetchHandle_;                 // handle whose images are being / have been fetched through the session
-  int artNextKind_ = ART_KINDS;                // next image kind to fetch for artFetchHandle_ (ART_KINDS: all started)
-  int artTransferKind_ = ART_KINDS;            // kind of the transfer in flight
-  int artFetched_ = 0;                         // images of artFetchHandle_ downloaded so far
-  std::string artFailedHandle_;                // handle that failed to download; not retried
-  std::string artTransferPath_;                // object path of the transfer in flight (empty until obexd has answered)
-  std::string artTransferFile_;                // file the transfer in flight writes to; empty when no transfer is in flight
-  unsigned artCounter_ = 0;                    // makes the image file names unique, so a changed file name tells the UI that the image changed
 
   // ---- elements ----
   std::shared_ptr<BoolControl> scanPtr;
@@ -199,8 +158,7 @@ private:
   std::shared_ptr<StringSensor> trackTitlePtr;
   std::shared_ptr<StringSensor> trackArtistPtr;
   std::shared_ptr<StringSensor> trackAlbumPtr;
-  std::shared_ptr<StringSensor> trackArtPtr;
-  std::shared_ptr<StringSensor> trackArtThumbnailPtr;
+  std::shared_ptr<StringSensor> trackAlbumArtPtr;
   std::shared_ptr<UInt32Sensor> trackDurationPtr;
   std::shared_ptr<UInt32Sensor> trackPositionPtr;
   std::shared_ptr<BoolControl> enablePtr;
@@ -210,7 +168,7 @@ private:
   std::shared_ptr<BoolControl> previousPtr;
 
   std::string connectedMac;                  // MAC of the device connectedDevice currently describes (empty when none)
-  ArtRequest lastArtRequest;                 // cover art last asked of the worker thread
+  AlbumArtLookup albumArt_;                  // finds the album art of the current track by artist / album / title
   int lastStreamVolume = -1;                 // last stream volume (0-127) seen on / sent to BlueALSA
   bool playing = false;                      // phone's playback state at the last update
   bool playPending = false;                  // a play/pause command was sent and the phone has not applied it yet

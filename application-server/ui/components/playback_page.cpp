@@ -5,7 +5,7 @@
 
 #include "playback_page.h"
 #include "audio_source.h"
-#include "cover_art.h"
+#include "album_art.h"
 #include "play_button.h"
 #include "tile.h"
 #include "../nav.h"
@@ -192,8 +192,8 @@ void playback_page_create(lv_obj_t *screen)
 
     PlaybackPage *p = new PlaybackPage{};
 
-    lv_obj_t *art = cover_art_create(screen, landscape ? LANDSCAPE_ART_W : displayW,
-                                     landscape ? displayH : PORTRAIT_ART_H, false, 0);
+    lv_obj_t *art = album_art_create(screen, landscape ? LANDSCAPE_ART_W : displayW,
+                                     landscape ? displayH : PORTRAIT_ART_H, 0);
     lv_obj_align(art, LV_ALIGN_TOP_LEFT, 0, 0);
     back_button_create(screen);
 

@@ -1,4 +1,4 @@
-#include "ArtFiles.h"
+#include "AlbumArtFiles.h"
 
 #include <curl/curl.h>
 
@@ -13,7 +13,7 @@
 #include <unistd.h>
 
 // Images are decoded here and republished as PNG: LVGL's JPEG decoder (TJPGD) decodes in pieces, and LVGL cannot scale
-// or rotate such partially decoded images, so a JPEG file would not render in a cover art widget that fits it to its box.
+// or rotate such partially decoded images, so a JPEG file would not render in an album art widget that fits it to its box.
 #define STBI_ONLY_JPEG
 #define STBI_ONLY_PNG
 #define STBI_MAX_DIMENSIONS 4096
@@ -26,17 +26,17 @@ namespace
 {
 
 constexpr long MAX_IMAGE_BYTES = 8L * 1024 * 1024;
-constexpr int MAX_ART_PX = 256; // longest side of the published image; larger images are scaled down
+constexpr int MAX_ALBUM_ART_PX = 500; // longest side of the published image; larger images are scaled down. The biggest album art area is 498 px wide
 
 std::atomic<unsigned> fileCounter{0};
 
 // /run is a tmpfs on the board; fall back to /tmp where /run is not writable (host builds)
-const std::string &artDirectory()
+const std::string &albumArtDirectory()
 {
   static std::string dir;
   static std::once_flag once;
   std::call_once(once, []() {
-    dir = access("/run", W_OK) == 0 ? "/run/trevally-art" : "/tmp/trevally-art";
+    dir = access("/run", W_OK) == 0 ? "/run/trevally-album-art" : "/tmp/trevally-album-art";
     std::error_code ec;
     std::filesystem::remove_all(dir, ec); // images of an earlier run; nothing of this run exists yet
     std::filesystem::create_directories(dir, ec);
@@ -46,19 +46,19 @@ const std::string &artDirectory()
 
 std::string newFilePath(const std::string &prefix, const std::string &ext)
 {
-  return artDirectory() + "/" + prefix + "-" + std::to_string(fileCounter.fetch_add(1)) + "." + ext;
+  return albumArtDirectory() + "/" + prefix + "-" + std::to_string(fileCounter.fetch_add(1)) + "." + ext;
 }
 
-// Writes decoded RGB pixels (stbi_load with 3 channels) as a PNG, scaled down (box filter) to at most MAX_ART_PX.
+// Writes decoded RGB pixels (stbi_load with 3 channels) as a PNG, scaled down (box filter) to at most MAX_ALBUM_ART_PX.
 // Returns false when the file could not be written.
 bool writePng(const std::string &path, const unsigned char *rgb, int w, int h)
 {
   const int longest = w > h ? w : h;
-  if (longest <= MAX_ART_PX)
+  if (longest <= MAX_ALBUM_ART_PX)
     return stbi_write_png(path.c_str(), w, h, 3, rgb, w * 3) != 0;
 
-  const int ow = w * MAX_ART_PX / longest > 0 ? w * MAX_ART_PX / longest : 1;
-  const int oh = h * MAX_ART_PX / longest > 0 ? h * MAX_ART_PX / longest : 1;
+  const int ow = w * MAX_ALBUM_ART_PX / longest > 0 ? w * MAX_ALBUM_ART_PX / longest : 1;
+  const int oh = h * MAX_ALBUM_ART_PX / longest > 0 ? h * MAX_ALBUM_ART_PX / longest : 1;
   std::vector<unsigned char> out(static_cast<size_t>(ow) * oh * 3);
   for (int y = 0; y < oh; y++)
   {
@@ -104,7 +104,7 @@ size_t writeToFile(char *ptr, size_t size, size_t nmemb, void *userdata)
 
 } // namespace
 
-namespace ArtFiles
+namespace AlbumArtFiles
 {
 
 std::string write(const std::string &prefix, const void *data, size_t size)
@@ -116,7 +116,7 @@ std::string write(const std::string &prefix, const void *data, size_t size)
   return publishDecoded(prefix, rgb, w, h);
 }
 
-std::string download(const std::string &prefix, const std::string &url)
+std::string download(const std::string &prefix, const std::string &url, const std::string &userAgent)
 {
   if (url.rfind("https://", 0) != 0 && url.rfind("http://", 0) != 0)
     return "";
@@ -146,6 +146,8 @@ std::string download(const std::string &prefix, const std::string &url)
   curl_easy_setopt(curl, CURLOPT_MAXFILESIZE, MAX_IMAGE_BYTES);
   curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L); // required when called from threads
   curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
+  if (!userAgent.empty())
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, userAgent.c_str());
 
   const CURLcode rc = curl_easy_perform(curl);
   curl_easy_cleanup(curl);
@@ -168,4 +170,4 @@ void remove(const std::string &path)
     ::remove(path.c_str());
 }
 
-} // namespace ArtFiles
+} // namespace AlbumArtFiles

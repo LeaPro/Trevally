@@ -582,7 +582,7 @@ static lv_obj_t *homePane;
 static lv_obj_t *homeHeader;
 static lv_obj_t *homeRibbon;
 
-// Playback destination: reached by tapping the cover art on the home ribbon; its back button returns home.
+// Playback destination: reached by tapping the album art on the home ribbon; its back button returns home.
 static nav_dest_t playbackDest;
 static void ribbonArtTapCb(lv_event_t *)
 {

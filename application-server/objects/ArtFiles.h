@@ -16,8 +16,9 @@ namespace ArtFiles
 std::string write(const std::string &prefix, const void *data, size_t size);
 
 // Downloads an http(s) image to a new file. Blocks for up to ~20 s: only call it from a worker thread.
+// userAgent, when not empty, is sent as the User-Agent header; maxPx (when > 0) replaces the default 256 px limit.
 // Returns the file path, or an empty string on failure.
-std::string download(const std::string &prefix, const std::string &url);
+std::string download(const std::string &prefix, const std::string &url, const std::string &userAgent = "", int maxPx = 0);
 
 // Removes a file returned by write() / download(); an empty path is ignored.
 void remove(const std::string &path);
