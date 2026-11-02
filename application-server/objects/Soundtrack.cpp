@@ -1,4 +1,5 @@
 #include "objects.h"
+#include "ArtFiles.h"
 #include <Common.h>
 #include <cassert>
 #include <cstring>
@@ -39,6 +40,16 @@ Soundtrack::Soundtrack(string path, Object *parent)
 
   name = "currentSource"; elements[name] = currentSourcePtr = std::make_shared<JsonSensor>(path + "/" + name, this, json::object());
   name = "currentTrack"; elements[name] = currentTrackPtr = std::make_shared<JsonSensor>(path + "/" + name, this, json::object());
+  // Common track schema, same as bluetooth and customChannels. trackArtThumbnail and trackArt are the same image file
+  // (the SDK delivers a single image); the file name changes with every new image; empty until the SDK has it.
+  name = "trackTitle"; elements[name] = trackTitlePtr = std::make_shared<StringSensor>(path + "/" + name, this, "", 128);
+  name = "trackArtist"; elements[name] = trackArtistPtr = std::make_shared<StringSensor>(path + "/" + name, this, "", 128);
+  name = "trackAlbum"; elements[name] = trackAlbumPtr = std::make_shared<StringSensor>(path + "/" + name, this, "", 128);
+  name = "trackArtThumbnail"; elements[name] = trackArtThumbnailPtr = std::make_shared<StringSensor>(path + "/" + name, this, "", 64);
+  name = "trackArt"; elements[name] = trackArtPtr = std::make_shared<StringSensor>(path + "/" + name, this, "", 64);
+  // Length of the current track and how far into it playback is, in whole seconds; 0 when there is no track
+  name = "trackDuration"; elements[name] = trackDurationPtr = std::make_shared<UInt32Sensor>(path + "/" + name, this, 0, __UINT32_MAX__, 0, "s");
+  name = "trackPosition"; elements[name] = trackPositionPtr = std::make_shared<UInt32Sensor>(path + "/" + name, this, 0, __UINT32_MAX__, 0, "s");
   name = "isPlaying"; elements[name] = isPlayingPtr = std::make_shared<BoolSensor>(path + "/" + name, this, false);
   name = "play"; elements[name] = playPtr = std::make_shared<BoolControl>(path + "/" + name, this, false, true, true);
   name = "next"; elements[name] = nextPtr = std::make_shared<BoolControl>(path + "/" + name, this, false, false, true);
@@ -209,11 +220,28 @@ void Soundtrack::update(bool sensorsOnly, bool refreshVolatileElements)
     isPlayingPtr->set(false);
     restorePlayStatePending = false;
     wasEnabled = false;
+    clearTrack();
     syncSensorState();
     return;
   }
 
-  websiteReachablePtr->set(isWebsiteReachable("https://app.soundtrack.io"));
+  // The probe does blocking DNS/connect, so run it off the io_context (LVGL) thread.
+  if (reachabilityProbe.valid() &&
+      reachabilityProbe.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+  {
+    websiteReachablePtr->set(reachabilityProbe.get());
+  }
+  if (!reachabilityProbe.valid())
+  {
+    const auto now = std::chrono::steady_clock::now();
+    if (now - lastReachabilityProbe >= std::chrono::seconds(5))
+    {
+      lastReachabilityProbe = now;
+      reachabilityProbe = std::async(std::launch::async, []() {
+        return isWebsiteReachable("https://app.soundtrack.io");
+      });
+    }
+  }
 
   if (!wasEnabled && nowEnabled)
   {
@@ -238,8 +266,8 @@ void Soundtrack::update(bool sensorsOnly, bool refreshVolatileElements)
     return;
   }
 
-  // Drive the SDK lifecycle so auth/playback events progress between polls.
-  api->loop_iteration(splayer);
+  // loop_iteration() is deprecated and blocks ~100 ms per call, starving LVGL;
+  // the SDK drives itself with internal threads.
 
   syncPairingResult();
   applyRestoredPlayState();
@@ -502,6 +530,91 @@ void Soundtrack::syncMetadata()
 
   currentTrackPtr->set(out);
   metadataApi->free_track_metadata(md);
+
+  trackTitlePtr->set(out["title"].get<string>());
+  trackAlbumPtr->set(out["album"].get<string>());
+  string artistLine;
+  for (const auto &a : artists)
+  {
+    if (!artistLine.empty())
+    {
+      artistLine += ", ";
+    }
+    artistLine += a.get<string>();
+  }
+  trackArtistPtr->set(artistLine);
+
+  const int64_t durationMs = out["durationMs"].get<int64_t>();
+  const int64_t positionSec = out["positionSec"].get<int64_t>();
+  trackDurationPtr->set(static_cast<uint32_t>(durationMs > 0 ? durationMs / 1000 : 0));
+  trackPositionPtr->set(static_cast<uint32_t>(positionSec > 0 ? positionSec : 0));
+  const string uri = out["albumImageUri"].get<string>();
+  if (uri != albumImageUri)
+  {
+    // a different album image: drop the old one right away, fetch the new one below
+    albumImageUri = uri;
+    albumImagePending = !uri.empty();
+    albumImageAttempts = 0;
+    lastAlbumImageAttempt = {};
+    ArtFiles::remove(albumImageFile);
+    albumImageFile.clear();
+    trackArtThumbnailPtr->set("");
+    trackArtPtr->set("");
+  }
+  syncAlbumImage();
+}
+
+// Downloads the album image of the current track from the URI the SDK reports and publishes it as a file. The SDK's own
+// image cache (get_current_track_album_image) is not used: is_album_image_cached never became true. The download runs on a
+// worker thread, so the update thread is never blocked by the network.
+void Soundtrack::syncAlbumImage()
+{
+  if (albumImageDownload.valid())
+  {
+    if (albumImageDownload.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
+    {
+      return;
+    }
+    const string file = albumImageDownload.get();
+    if (!file.empty() && albumImagePending && albumImageDownloadUri == albumImageUri)
+    {
+      albumImagePending = false;
+      albumImageFile = file;
+      trackArtThumbnailPtr->set(file);
+      trackArtPtr->set(file);
+    }
+    else
+    {
+      ArtFiles::remove(file); // the track changed (or the source was deselected) while it was downloading
+    }
+  }
+
+  const auto now = std::chrono::steady_clock::now();
+  if (!albumImagePending || albumImageAttempts >= 5 || now - lastAlbumImageAttempt < std::chrono::seconds(3))
+  {
+    return;
+  }
+  lastAlbumImageAttempt = now;
+  ++albumImageAttempts;
+  albumImageDownloadUri = albumImageUri;
+  albumImageDownload = std::async(std::launch::async, [uri = albumImageUri]() { return ArtFiles::download("soundtrack", uri); });
+}
+
+// Empties the track elements and removes the album image, for when Soundtrack is not the selected audio source
+void Soundtrack::clearTrack()
+{
+  trackTitlePtr->set("");
+  trackArtistPtr->set("");
+  trackAlbumPtr->set("");
+  trackDurationPtr->set(0);
+  trackPositionPtr->set(0);
+  trackArtThumbnailPtr->set("");
+  trackArtPtr->set("");
+  currentTrackPtr->set(json::object());
+  ArtFiles::remove(albumImageFile);
+  albumImageFile.clear();
+  albumImageUri.clear();
+  albumImagePending = false;
 }
 
 void Soundtrack::handleControls()

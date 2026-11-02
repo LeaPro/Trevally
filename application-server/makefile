@@ -56,6 +56,7 @@ endif
 # build list of include directories
 INCS=.
 INCS+=./objects
+INCS+=./third_party
 INCS+=./ui
 INCS+=./ui/components
 ifeq ($(SOUNDTRACK_ENABLED),1)
@@ -107,6 +108,8 @@ COMPFLAGS+=-DSAMPLE_RATE=96e3f
 COMPFLAGS+=-DSOUNDTRACK_ENABLED=$(SOUNDTRACK_ENABLED)
 COMPFLAGS+=-DLV_LINUX_BACKEND=\"$(LVGL_BACKEND)\"
 COMPFLAGS+=$(LVGL_EXTRA_CFLAGS)
+# GIO (GDBus) is used to talk to BlueZ / BlueALSA (objects/Bluetooth.cpp); host: libglib2.0-dev, target: SDK sysroot
+COMPFLAGS+=$(shell pkg-config --cflags gio-2.0)
 
 # Prefer ALSA backend on target when headers are available in SDK sysroot.
 ifeq ($(SOUNDTRACK_ENABLED),1)
@@ -122,6 +125,7 @@ CPPFLAGS=-x c++ -std=c++1z -DBOOST_BIND_GLOBAL_PLACEHOLDERS -DBOOST_ASIO_USE_TS_
 OUTPUT_OPTION=-MMD -MP -o $@
 LDLIBS=-lm -lpthread -lgcc -lstdc++ -lrt -L$(BOOST_LIB) -lboost_system -lboost_filesystem -llmdb -lssl -lcrypto -ldl -lcurl
 LDLIBS+=-L$(LVGL_LIB) -llvgl_linux -llvgl $(LVGL_EXTRA_LDLIBS)
+LDLIBS+=$(shell pkg-config --libs gio-2.0)
 LDFLAGS+=$(LVGL_EXTRA_LDFLAGS)
 
 ifeq ($(SOUNDTRACK_ENABLED),1)

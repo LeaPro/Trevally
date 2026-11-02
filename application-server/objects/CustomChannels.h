@@ -8,6 +8,7 @@
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -84,7 +85,8 @@ private:
   void applyPlayNowResponse(const WorkerResponse &response);
 
   void runAutomation();
-
+  void syncTrackElements();
+  void startArtDownload(const std::string &smallUrl, const std::string &largeUrl);
   bool isAuthenticated() const;
   bool setMixerVolume(uint32_t percent);
   void setError(const std::string &msg);
@@ -94,6 +96,11 @@ private:
   std::shared_ptr<StringSensor> authUrlPtr;
   std::shared_ptr<JsonSensor> channelsPtr;
   std::shared_ptr<JsonSensor> nowPlayingPtr;
+  std::shared_ptr<StringSensor> trackTitlePtr;
+  std::shared_ptr<StringSensor> trackArtistPtr;
+  std::shared_ptr<StringSensor> trackAlbumPtr;
+  std::shared_ptr<StringSensor> trackArtThumbnailPtr;
+  std::shared_ptr<StringSensor> trackArtPtr;
   std::shared_ptr<BoolSensor> isPlayingPtr;
   std::shared_ptr<BoolSensor> websiteReachablePtr;
   std::shared_ptr<BoolControl> enabledPtr;
@@ -135,7 +142,19 @@ private:
   std::chrono::steady_clock::time_point lastVolumeRestoreAttemptAt{};
   std::chrono::steady_clock::time_point lastWebsiteReachabilityCheckAt{};
   bool lastWebsiteReachable = false;
+  bool websiteReachabilityKnown = false;
+  std::future<bool> websiteReachabilityProbe;
 
+  // Cover art: the album art URLs of the track are downloaded to local files on a worker thread (LVGL loads files, not URLs)
+  struct ArtDownload
+  {
+    std::string smallUrl, largeUrl; // what was requested
+    std::string smallFile, largeFile; // downloaded files; empty on failure
+  };
+  std::future<ArtDownload> artDownload;
+  std::string artShownSmallUrl, artShownLargeUrl; // URLs the published trackArt* files belong to
+  std::string artShownSmallFile, artShownLargeFile;
+  std::chrono::steady_clock::time_point artRetryAt{};
   mutable std::mutex workerMutex;
   std::condition_variable workerCv;
   std::thread workerThread;

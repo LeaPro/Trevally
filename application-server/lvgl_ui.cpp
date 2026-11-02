@@ -28,6 +28,8 @@
 #include "ui/components/picker_wheel.h"
 #include "ui/components/qr_code.h"
 #include "ui/components/scroll_pane.h"
+#include "ui/components/now_playing_ribbon.h"
+#include "ui/components/playback_page.h"
 #include "ui/components/setup_page.h"
 #include "ui/nav.h"
 #include "ui/components/tile.h"
@@ -578,7 +580,14 @@ static void updateSettingsValues()
 static lv_obj_t *homeScreen;
 static lv_obj_t *homePane;
 static lv_obj_t *homeHeader;
+static lv_obj_t *homeRibbon;
 
+// Playback destination: reached by tapping the cover art on the home ribbon; its back button returns home.
+static nav_dest_t playbackDest;
+static void ribbonArtTapCb(lv_event_t *)
+{
+  nav_goto(playbackDest);
+}
 // Orientation setting -> display rotation. The panel is natively portrait; landscape is
 // the same panel rotated 270 degrees in software, which only the framebuffer backend does
 // (the SDL simulator stays portrait). Layout sizes follow the display, see ui_is_landscape().
@@ -628,6 +637,20 @@ static void buildHome()
   const header_slot_t settingsSlot = {true, UI_ICON_SETTINGS, settingsIconCb, nullptr};
   homeHeader = header_create(homeScreen, homeSlot, scroll_pane_get_screen_name(homePane), settingsSlot,
                             &satoshi_medium_24);
+
+  // Now-playing ribbon: portrait, the strip under the pane across the display; landscape, the top of the
+  // panel right of the pane. It hides itself while nothing is playing.
+  const int displayW = lv_display_get_horizontal_resolution(lv_obj_get_display(homeScreen));
+  if (ui_is_landscape())
+  {
+    homeRibbon = now_playing_ribbon_create(homeScreen, displayW - ui_content_w(), ribbonArtTapCb);
+    lv_obj_align(homeRibbon, LV_ALIGN_TOP_LEFT, ui_content_w(), 0);
+  }
+  else
+  {
+    homeRibbon = now_playing_ribbon_create(homeScreen, displayW, ribbonArtTapCb);
+    lv_obj_align(homeRibbon, LV_ALIGN_TOP_LEFT, 0, UI_HEADER_H_PX + ui_pane_h());
+  }
 }
 
 // Settings destination: reached by the gear icon; its back button returns home. Below its
@@ -671,6 +694,12 @@ static void buildSettings()
   lv_obj_add_event_cb(settingsDest.focus, settingsEncoderCb, LV_EVENT_PRESSED, settingsPicker);
   lv_obj_add_event_cb(settingsDest.focus, settingsEncoderCb, LV_EVENT_RELEASED, settingsPicker);
   lv_obj_add_event_cb(settingsDest.focus, settingsEncoderCb, LV_EVENT_PRESS_LOST, settingsPicker);
+}
+
+static void buildPlayback()
+{
+  playbackDest = nav_screen_create();
+  playback_page_create(playbackDest.screen);
 }
 
 // Setup destination: shown instead of home while /misc/setupMode is set (the device has not
@@ -730,14 +759,22 @@ static void rebuildForOrientation()
     setupDest = {nullptr, nullptr};
     setupContent = nullptr;
   }
+  if (playbackDest.screen)
+  {
+    lv_obj_delete(playbackDest.screen);
+    playbackDest = {nullptr, nullptr};
+  }
   scroll_pane_destroy(homePane);
   lv_obj_delete(homeHeader);
+  lv_obj_delete(homeRibbon);
   homePane = nullptr;
   homeHeader = nullptr;
+  homeRibbon = nullptr;
 
   applyOrientation();
   buildHome();
   buildSettings();
+  buildPlayback();
   buildSetup();
   if (setupActive)
   {
@@ -932,6 +969,7 @@ void lvglUiInit(boost::asio::io_context &io_context, std::shared_ptr<RootObject>
   applyOrientation();
   buildHome();
   buildSettings();
+  buildPlayback();
   buildSetup();
   updateSetupMode();   // open on the setup screens, not home, if the device is not configured yet
 

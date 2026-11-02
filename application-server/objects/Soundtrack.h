@@ -1,6 +1,8 @@
 #pragma once
 #include <object.h>
+#include <chrono>
 #include <cstdint>
+#include <future>
 #include <map>
 
 #ifndef SOUNDTRACK_ENABLED
@@ -37,6 +39,8 @@ private:
   void syncPairingResult();
   void syncTroubles();
   void syncMetadata();
+  void syncAlbumImage();
+  void clearTrack();
   void handleControls();
   const char *authStatusToString(int status) const;
   const char *sourceTypeToString(int type) const;
@@ -63,6 +67,13 @@ private:
   std::shared_ptr<JsonSensor> soundzonePtr;
   std::shared_ptr<JsonSensor> currentSourcePtr;
   std::shared_ptr<JsonSensor> currentTrackPtr;
+  std::shared_ptr<StringSensor> trackTitlePtr;
+  std::shared_ptr<StringSensor> trackArtistPtr;
+  std::shared_ptr<StringSensor> trackAlbumPtr;
+  std::shared_ptr<UInt32Sensor> trackDurationPtr;
+  std::shared_ptr<UInt32Sensor> trackPositionPtr;
+  std::shared_ptr<StringSensor> trackArtThumbnailPtr;
+  std::shared_ptr<StringSensor> trackArtPtr;
   std::shared_ptr<JsonSensor> libraryPtr;
   std::shared_ptr<JsonSensor> troublesPtr;
   std::shared_ptr<StringSensor> lastErrorPtr;
@@ -79,7 +90,16 @@ private:
   splayer_t *splayer = nullptr;
   bool sdkInitialized = false;
   bool restorePlayStatePending = false;
+  std::string albumImageUri;                 // album art URI of the current track (an https URL on the Soundtrack CDN)
+  std::string albumImageFile;                // published image file; empty when none
+  bool albumImagePending = false;            // the image for albumImageUri is still to be downloaded and published
+  int albumImageAttempts = 0;
+  std::future<std::string> albumImageDownload; // worker downloading albumImageDownloadUri; result is the file or empty
+  std::string albumImageDownloadUri;
+  std::chrono::steady_clock::time_point lastAlbumImageAttempt{};
   bool wasEnabled = false;
+  std::future<bool> reachabilityProbe;
+  std::chrono::steady_clock::time_point lastReachabilityProbe{};
   bool wasPaired = false;
   bool libraryRefreshNeeded = true;
   bool libraryFetchInProgress = false;
