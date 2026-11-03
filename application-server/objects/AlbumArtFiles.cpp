@@ -116,8 +116,10 @@ std::string write(const std::string &prefix, const void *data, size_t size)
   return publishDecoded(prefix, rgb, w, h);
 }
 
-std::string download(const std::string &prefix, const std::string &url, const std::string &userAgent)
+std::string download(const std::string &prefix, const std::string &url, const std::string &userAgent, bool *transient)
 {
+  if (transient != nullptr)
+    *transient = false;
   if (url.rfind("https://", 0) != 0 && url.rfind("http://", 0) != 0)
     return "";
 
@@ -127,13 +129,19 @@ std::string download(const std::string &prefix, const std::string &url, const st
   const std::string path = newFilePath(prefix, "download"); // temporary: replaced by the decoded PNG
   FILE *f = fopen(path.c_str(), "wb");
   if (f == nullptr)
+  {
+    if (transient != nullptr)
+      *transient = true;
     return "";
+  }
 
   CURL *curl = curl_easy_init();
   if (curl == nullptr)
   {
     fclose(f);
     ::remove(path.c_str());
+    if (transient != nullptr)
+      *transient = true;
     return "";
   }
   curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
@@ -150,12 +158,21 @@ std::string download(const std::string &prefix, const std::string &url, const st
     curl_easy_setopt(curl, CURLOPT_USERAGENT, userAgent.c_str());
 
   const CURLcode rc = curl_easy_perform(curl);
+  long status = 0;
+  if (rc == CURLE_HTTP_RETURNED_ERROR)
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
   curl_easy_cleanup(curl);
   const bool closed = fclose(f) == 0;
 
   if (rc != CURLE_OK || !closed)
   {
     ::remove(path.c_str());
+    if (transient != nullptr)
+    {
+      // an HTTP answer in the 4xx range (except timeout / rate limit) means the image is not there
+      const bool notThere = rc == CURLE_HTTP_RETURNED_ERROR && status >= 400 && status < 500 && status != 408 && status != 429;
+      *transient = !notThere;
+    }
     return "";
   }
   int w = 0, h = 0, n = 0;

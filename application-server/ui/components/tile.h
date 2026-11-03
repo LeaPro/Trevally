@@ -12,7 +12,7 @@
  *   CONTROL        tile_control.cpp         (value shows "-"; will come from /leaControl config)
  *   SENSOR         tile_sensor.cpp          (value shows "-"; will come from /leaSensor config)
  *   BLUETOOTH      tile_bluetooth.cpp       /bluetooth/volume
- *   STREAMING      tile_streaming.cpp       /<binding, lower-cased>/volume
+ *   STREAMING      tile_streaming.cpp       /<source named by binding>/volume
  *   WEATHER        tile_weather.cpp         /weather config[binding]
  *   MACRO          tile_macro.cpp           (no data yet)
  *
@@ -45,12 +45,24 @@ bool tile_type_parse(const std::string &s, tile_type_t &out);
  * @brief Create a tile of @p type, @p w x @p h pixels, as a child of
  *        @p parent. The caller positions it.
  *
+ * @param id       Tiles.config key of the tile (for tiles that edit their own config)
  * @param name     Tile display name (Tiles.config[id].name)
  * @param binding  Tile binding (Tiles.config[id].binding); meaning is per type
  */
-lv_obj_t *tile_create(lv_obj_t *parent, tile_type_t type,
+lv_obj_t *tile_create(lv_obj_t *parent, tile_type_t type, const std::string &id,
                       const std::string &name, const std::string &binding,
                       int w, int h);
+
+/** Tiles.config[tileId].binding; "" if the tile does not exist. */
+std::string tile_binding_read(const std::string &tileId);
+
+/** Sets Tiles.config[tileId].binding; false if the tile does not exist. The screens are rebuilt from
+ *  the change, but unlike a change from outside the device it does not close the open pages (see
+ *  tile_take_ui_edit()). */
+bool tile_binding_set(const std::string &tileId, const std::string &binding);
+
+/** True, once, after tile_binding_set() changed the config since the last call. */
+bool tile_take_ui_edit();
 
 /* =========================================================================
  * Per-type builders - fill an empty @p root (already sized and themed)
@@ -68,6 +80,8 @@ void tile_macro_build        (lv_obj_t *root, const std::string &name, const std
 /* Pages: a tile type may open its own page (see nav.h) when tapped. Types with a
  * page are made clickable by tile_create(). */
 void tile_bluetooth_volume_open(const std::string &name, const std::string &binding);
+void tile_streaming_volume_open(const std::string &name, const std::string &binding,
+                                const std::string &tileId);
 
 /** Opens the Paired devices page directly (e.g. from the Settings Bluetooth row), titled @p title. */
 void tile_bluetooth_devices_open(const std::string &title);

@@ -94,6 +94,9 @@ enum class level_gauge_style_t
  * same in every theme. */
 #define UI_COLOR_TEXT_SUCCESS     lv_color_hex(0xAEE076)
 #define UI_COLOR_TEXT_ERROR       lv_color_hex(0xFDA29B)
+/* Audio source status dot: UI_COLOR_TEXT_SUCCESS is green, these are yellow and gray. Same in every theme. */
+#define UI_COLOR_STATUS_WARNING   lv_color_hex(0xFEC84B)
+#define UI_COLOR_STATUS_INACTIVE  lv_color_hex(0x5A5A5A)
 
 /* Built-in "dark"/"light" palettes - the only two theme with colors
  * compiled into firmware. Any other theme key is a custom theme and its

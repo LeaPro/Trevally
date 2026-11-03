@@ -28,6 +28,7 @@ struct AlbumArt {
     lv_obj_t   *image;
     lv_timer_t *timer;
     std::string shown;   /* path currently set on the image */
+    int         w, h;    /* the box size the image has to cover */
 };
 
 /* Files get a new name with every image, so a path change is the only trigger needed. */
@@ -41,6 +42,7 @@ static void refresh(lv_timer_t *timer)
     if (path.empty()) {
         fprintf(stderr, "album_art: no image\n");
         lv_obj_add_flag(art->image, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_style_bg_opa(lv_obj_get_parent(art->image), LV_OPA_COVER, 0);
         return;
     }
     const std::string src = "A:" + path;
@@ -50,7 +52,16 @@ static void refresh(lv_timer_t *timer)
             res == LV_RESULT_OK ? "decodable" : "NO DECODER / unreadable",
             res == LV_RESULT_OK ? (int)header.w : 0, res == LV_RESULT_OK ? (int)header.h : 0);
     lv_image_set_src(art->image, src.c_str());
+    if (res == LV_RESULT_OK && header.w > 0 && header.h > 0) {
+        /* Cover the box: the smallest scale (rounded up) that fills both axes. The image is
+         * centered and scaled about its center, so any overshoot is cropped evenly on all sides. */
+        const uint32_t sx = ((uint32_t)art->w * 256 + header.w - 1) / header.w;
+        const uint32_t sy = ((uint32_t)art->h * 256 + header.h - 1) / header.h;
+        lv_image_set_scale(art->image, sx > sy ? sx : sy);
+    }
     lv_obj_clear_flag(art->image, LV_OBJ_FLAG_HIDDEN);
+    /* the placeholder background must not show as a rim around the art */
+    lv_obj_set_style_bg_opa(lv_obj_get_parent(art->image), LV_OPA_TRANSP, 0);
 }
 
 lv_obj_t *album_art_create(lv_obj_t *parent, int w, int h, int radius)
@@ -65,10 +76,10 @@ lv_obj_t *album_art_create(lv_obj_t *parent, int w, int h, int radius)
     lv_obj_t *image = lv_image_create(box);
     lv_obj_set_size(image, w, h);
     lv_obj_align(image, LV_ALIGN_CENTER, 0, 0);
-    lv_image_set_inner_align(image, LV_IMAGE_ALIGN_COVER);
+    lv_image_set_inner_align(image, LV_IMAGE_ALIGN_CENTER);
     lv_obj_add_flag(image, LV_OBJ_FLAG_HIDDEN);
 
-    AlbumArt *art = new AlbumArt{image, nullptr, std::string()};
+    AlbumArt *art = new AlbumArt{image, nullptr, std::string(), w, h};
     art->timer = lv_timer_create(refresh, ALBUM_ART_POLL_MS, art);
     lv_obj_add_event_cb(box, [](lv_event_t *e) {
         AlbumArt *art = (AlbumArt *)lv_event_get_user_data(e);

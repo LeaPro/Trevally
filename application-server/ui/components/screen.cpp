@@ -21,6 +21,7 @@ struct Rect { int x, y, w, h; };
 
 struct TileSpec {
     tile_type_t type;
+    std::string id;
     std::string name;
     std::string binding;
 };
@@ -93,6 +94,7 @@ std::vector<TileSpec> readTiles(const json &screenConfig)
                     SCREEN_MAX_TILES, screen_name(screenConfig).c_str());
             break;
         }
+        spec.id      = tileId.get<std::string>();
         spec.name    = jsonString(*tileIt, "name");
         spec.binding = jsonString(*tileIt, "binding");
         specs.push_back(std::move(spec));
@@ -121,7 +123,7 @@ lv_obj_t *screen_create(lv_obj_t *parent, const json &screenConfig)
 
     for (size_t i = 0; i < specs.size(); i++) {
         const Rect &r = rects[i];
-        lv_obj_t *tile = tile_create(screen, specs[i].type, specs[i].name, specs[i].binding, r.w, r.h);
+        lv_obj_t *tile = tile_create(screen, specs[i].type, specs[i].id, specs[i].name, specs[i].binding, r.w, r.h);
         lv_obj_set_pos(tile, r.x, r.y);
 
         /* Dividers between tiles only: none on the screen's outer edges. */

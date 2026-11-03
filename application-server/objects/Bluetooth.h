@@ -50,6 +50,7 @@ private:
     bool playing = false;
     std::string title, artist, album;
     uint32_t durationMs = 0;                       // length of the current track, 0 when the phone doesn't say
+    std::optional<bool> shuffle, repeat;           // the phone's shuffle / repeat settings (any mode but "off"); unset when it does not report them
     uint32_t positionMs = 0;                       // playback position at positionAt
     std::chrono::steady_clock::time_point positionAt{}; // when positionMs was received / the player last started or stopped
     // The current playback position: positionMs, advanced by the time passed since positionAt while playing
@@ -70,6 +71,13 @@ private:
     uint16_t volume = 0; // channel 1 in the high byte, channel 2 in the low byte; bit 7 of each is the mute flag
   };
   using Reply = std::function<void(_GVariant *result, const _GError *error)>;
+  // Follows one of the phone's player settings (shuffle, repeat) like syncPlayback() follows play
+  struct SettingSync
+  {
+    bool pending = false;                          // a change was sent and the phone has not applied it yet
+    bool pendingValue = false;                     // what that change asked for
+    std::chrono::steady_clock::time_point holdUntil{};
+  };
 
   // ---- element handling (main thread) ----
   template <typename Predicate>
@@ -86,6 +94,8 @@ private:
   void updateAlbumArt();
   void syncVolume();
   void syncPlayback(std::chrono::steady_clock::time_point now);
+  void syncPlayerSetting(const std::shared_ptr<BoolControl> &ptr, SettingSync &sync, const char *property, const char *onValue,
+                         std::optional<bool> phoneValue, std::chrono::steady_clock::time_point now);
   void handleTrackButtons();
 
   // ---- BlueZ / BlueALSA state: snapshots of the cache, callable from any thread ----
@@ -110,6 +120,7 @@ private:
   void connectDevice(const std::string &mac, const std::string &previousMac);
   void disconnectDevice(const std::string &mac);   // untrusts and disconnects; the device stays paired
   void playerCommand(const std::string &mac, const char *method); // "Play", "Pause", "Next" or "Previous"
+  void setPlayerProperty(const std::string &mac, const char *name, const char *value); // "Shuffle" / "Repeat"
   void setStreamVolume(int volume);                // 0-127, both channels, unmuted
 
   // ---- D-Bus plumbing (worker thread unless noted) ----
@@ -166,6 +177,8 @@ private:
   std::shared_ptr<BoolControl> playPtr;
   std::shared_ptr<BoolControl> nextPtr;
   std::shared_ptr<BoolControl> previousPtr;
+  std::shared_ptr<BoolControl> shufflePtr;
+  std::shared_ptr<BoolControl> repeatPtr;
 
   std::string connectedMac;                  // MAC of the device connectedDevice currently describes (empty when none)
   AlbumArtLookup albumArt_;                  // finds the album art of the current track by artist / album / title
@@ -174,6 +187,7 @@ private:
   bool playPending = false;                  // a play/pause command was sent and the phone has not applied it yet
   bool playPendingValue = false;             // what that command asked for
   std::chrono::steady_clock::time_point statusHoldUntil{}; // after a play/pause command, ignore the phone's state until it had time to apply it
+  SettingSync shuffleSync, repeatSync;
   bool scanning = false;                     // scan requested and not ended yet
   bool discoveryConfirmed = false;           // BlueZ reported that discovery is running since the scan was requested
   std::chrono::steady_clock::time_point scanRequestedAt{};

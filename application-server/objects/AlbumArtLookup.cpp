@@ -349,8 +349,9 @@ bool AlbumArtLookup::search(const std::string &endpoint, const std::string &quer
   return true;
 }
 
-// Downloads the front cover of the first release that has one.
-std::string AlbumArtLookup::fetchFront(const std::vector<std::string> &releaseIds, std::vector<std::string> &tried)
+// Downloads the front cover of the first release that has one. transientFailure is set when a download failed in a way that
+// may not happen next time (network error, timeout, 5xx), as opposed to the release having no cover.
+std::string AlbumArtLookup::fetchFront(const std::vector<std::string> &releaseIds, std::vector<std::string> &tried, bool &transientFailure)
 {
   size_t downloads = 0;
   for (const std::string &id : releaseIds)
@@ -361,9 +362,12 @@ std::string AlbumArtLookup::fetchFront(const std::vector<std::string> &releaseId
       continue;
     tried.push_back(id);
     ++downloads;
-    const std::string file = AlbumArtFiles::download("bluetooth", "https://coverartarchive.org/release/" + id + "/front-500", USER_AGENT);
+    bool transient = false;
+    const std::string file = AlbumArtFiles::download("bluetooth", "https://coverartarchive.org/release/" + id + "/front-500", USER_AGENT, &transient);
     if (!file.empty())
       return file;
+    if (transient)
+      transientFailure = true;
   }
   return "";
 }
@@ -373,6 +377,7 @@ AlbumArtLookup::Outcome AlbumArtLookup::lookup(const Track &tagged, std::string 
   const Track track{mainArtist(tagged.artist), withoutBrackets(tagged.album), withoutBrackets(tagged.title)};
   std::vector<std::string> tried;
   std::string body;
+  bool transientFailure = false;
 
   if (!track.album.empty())
   {
@@ -381,7 +386,7 @@ AlbumArtLookup::Outcome AlbumArtLookup::lookup(const Track &tagged, std::string 
     const json answer = json::parse(body, nullptr, false);
     if (!answer.is_discarded())
     {
-      file = fetchFront(releaseIds(answer), tried);
+      file = fetchFront(releaseIds(answer), tried, transientFailure);
       if (!file.empty())
         return Outcome::Found;
     }
@@ -395,6 +400,9 @@ AlbumArtLookup::Outcome AlbumArtLookup::lookup(const Track &tagged, std::string 
   const json answer = json::parse(body, nullptr, false);
   if (answer.is_discarded())
     return Outcome::Error;
-  file = fetchFront(recordingReleaseIds(answer), tried);
-  return file.empty() ? Outcome::NotFound : Outcome::Found;
+  file = fetchFront(recordingReleaseIds(answer), tried, transientFailure);
+  if (!file.empty())
+    return Outcome::Found;
+  // A cover that could not be downloaded for a reason that may pass is retried soon, not after the not-found wait.
+  return transientFailure ? Outcome::Error : Outcome::NotFound;
 }

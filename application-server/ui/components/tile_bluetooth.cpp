@@ -1,8 +1,9 @@
 /**
  * @file tile_bluetooth.cpp
- * @brief Bluetooth tile: title, volume slider above a left-aligned percentage.
- *        Reads /bluetooth/volume. Tapping it opens a page with the header and
- *        level gauge, where the encoder changes the volume.
+ * @brief Bluetooth tile: title, volume slider above a left-aligned percentage, and a status
+ *        dot (see audio_source.h) in the top right.
+ *        Reads /bluetooth/volume. Tapping it opens a page with the header, level gauge and the
+ *        source's enable switch, where the encoder changes the volume.
  */
 
 #include "tile.h"
@@ -10,6 +11,7 @@
 #include "level_gauge.h"
 #include "picker_wheel.h"
 #include "nav.h"
+#include "source_status.h"
 #include "../ui_design_tokens.h"
 
 #include <algorithm>
@@ -63,7 +65,12 @@ void tile_bluetooth_build(lv_obj_t *root, const std::string &name,
     lv_obj_set_style_pad_gap(root, tall ? 24 : 0, 0);
 
     tile_adaptive_label(root, name, &satoshi_medium_24, ui_theme_get_style_text_primary(),
-                        w - 2 * pad);
+                        w - 2 * pad - SOURCE_DOT_PX - 8);
+
+    lv_obj_t *dot = source_status_dot_create(root, "/bluetooth");
+    source_tile_dim_bind(root, "/bluetooth");
+    lv_obj_add_flag(dot, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    lv_obj_align(dot, LV_ALIGN_TOP_RIGHT, 0, (lv_font_get_line_height(&satoshi_medium_24) - SOURCE_DOT_PX) / 2);
 
     lv_obj_t *group = tile_container(root);
     lv_obj_set_layout(group, LV_LAYOUT_FLEX);
@@ -89,7 +96,8 @@ void tile_bluetooth_build(lv_obj_t *root, const std::string &name,
     tile_bind_number(valueLabel, slider, "/bluetooth", "volume");
 }
 
-/* Encoder rotation on the page changes the volume by one per tick; a press is unmapped. */
+/* Encoder rotation on the page changes the volume by one per tick; a press toggles the enable switch
+ * (source_enable_control_create()). */
 static void bluetooth_page_key_cb(lv_event_t *e)
 {
     const uint32_t key = lv_event_get_key(e);
@@ -276,7 +284,7 @@ static void forget_page_open(const PairedDevice &dev)
     lv_obj_remove_style_all(btn);
     lv_obj_clear_flag(btn, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_size(btn, ui_content_w() - 48, btnH);
-    lv_obj_align(btn, LV_ALIGN_TOP_MID, 0, UI_HEADER_H_PX + (UI_HEADER_H_PX + ui_pane_h() - btnH) / 2);
+    lv_obj_align(btn, LV_ALIGN_TOP_LEFT, 24, UI_HEADER_H_PX + (UI_HEADER_H_PX + ui_pane_h() - btnH) / 2);
     lv_obj_set_style_radius(btn, 8, 0);
     lv_obj_set_style_border_width(btn, 2, 0);
     lv_obj_set_style_border_color(btn, errorColor, 0);
@@ -332,7 +340,7 @@ static void paired_page_open()
     lv_obj_clear_flag(btn, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_style(btn, ui_theme_get_style_brand(), 0);
     lv_obj_set_size(btn, ui_content_w() - 48, btnH);
-    lv_obj_align(btn, LV_ALIGN_TOP_MID, 0, UI_HEADER_H_PX + (UI_HEADER_H_PX + ui_pane_h() - btnH) / 2);
+    lv_obj_align(btn, LV_ALIGN_TOP_LEFT, 24, UI_HEADER_H_PX + (UI_HEADER_H_PX + ui_pane_h() - btnH) / 2);
     lv_obj_set_style_radius(btn, 8, 0);
     lv_obj_set_style_bg_opa(btn, LV_OPA_TRANSP, 0);
     lv_obj_set_style_bg_opa(btn, OPACITY_BRAND_BG_LIGHT, LV_STATE_PRESSED);
@@ -396,13 +404,13 @@ static void pairing_page_open(const PairedDevice &dev)
     lv_obj_set_style_text_align(headline, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_width(headline, textW);
     lv_label_set_text(headline, "Connecting...");
-    lv_obj_align(headline, LV_ALIGN_TOP_MID, 0, UI_HEADER_H_PX + 24);
+    lv_obj_align(headline, LV_ALIGN_TOP_LEFT, (ui_content_w() - textW) / 2, UI_HEADER_H_PX + 24);
 
     /* the code is centred in the space below the headline */
     const int regionTop = UI_HEADER_H_PX + 24 + lv_font_get_line_height(&satoshi_medium_24);
     lv_obj_t *region = tile_container(page.screen);
     lv_obj_set_size(region, ui_content_w(), UI_HEADER_H_PX + ui_pane_h() - regionTop);
-    lv_obj_align(region, LV_ALIGN_TOP_MID, 0, regionTop);
+    lv_obj_align(region, LV_ALIGN_TOP_LEFT, 0, regionTop);
 
     lv_obj_t *code = lv_label_create(region);
     lv_obj_add_style(code, ui_theme_get_style_text_primary(), 0);
@@ -577,6 +585,7 @@ void tile_bluetooth_volume_open(const std::string &name, const std::string &bind
     header_create(page.screen, back, name.c_str(), gear);
 
     level_gauge_create(page.screen, "/bluetooth", "volume");
+    source_enable_control_create(page.screen, page.focus, "/bluetooth");
 
     lv_obj_add_event_cb(page.focus, bluetooth_page_key_cb, LV_EVENT_KEY, NULL);
     nav_push(page);

@@ -42,7 +42,11 @@ struct Ribbon {
 
 static void set_title(Ribbon *r, const std::string &title)
 {
-    if (r->title) lv_obj_delete(r->title);
+    if (r->title) {
+        lv_obj_delete(r->title);
+        r->title = nullptr;
+    }
+    if (title.empty()) return;
     r->title = tile_adaptive_label(r->root, title, &satoshi_medium_24,
                                    ui_theme_get_style_text_primary(), r->titleMaxW);
     lv_obj_set_pos(r->title, RIBBON_TEXT_X, RIBBON_ART_Y + RIBBON_EQUALIZER_H);
@@ -54,8 +58,7 @@ static void refresh(lv_timer_t *timer)
     Ribbon *r = (Ribbon *)lv_timer_get_user_data(timer);
 
     const AudioSource *source = audio_source_active();
-    const std::string title = audio_source_text(source, "trackTitle");
-    if (title.empty()) {
+    if (!source) {
         if (!lv_obj_has_flag(r->root, LV_OBJ_FLAG_HIDDEN)) {
             equalizer_set_running(r->equalizer, false);
             r->shownPlaying = -1;
@@ -65,6 +68,7 @@ static void refresh(lv_timer_t *timer)
     }
     if (lv_obj_has_flag(r->root, LV_OBJ_FLAG_HIDDEN)) lv_obj_clear_flag(r->root, LV_OBJ_FLAG_HIDDEN);
 
+    const std::string title = audio_source_text(source, "trackTitle");
     if (title != r->shownTitle) {
         r->shownTitle = title;
         set_title(r, title);
@@ -81,7 +85,7 @@ lv_obj_t *now_playing_ribbon_create(lv_obj_t *parent, int w, lv_event_cb_t on_ar
 {
     lv_obj_t *rootObj = tile_container(parent);
     lv_obj_set_size(rootObj, w, NOW_PLAYING_RIBBON_H_PX);
-    lv_obj_add_flag(rootObj, LV_OBJ_FLAG_HIDDEN);   /* until the first tick finds a track */
+    lv_obj_add_flag(rootObj, LV_OBJ_FLAG_HIDDEN);   /* until the first tick finds an enabled source */
 
     Ribbon *r = new Ribbon{};
     r->root      = rootObj;

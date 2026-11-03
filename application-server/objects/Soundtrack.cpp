@@ -26,6 +26,9 @@ Soundtrack::Soundtrack(string path, Object *parent)
   name = "websiteReachable"; elements[name] = websiteReachablePtr = std::make_shared<BoolSensor>(path + "/" + name, this, false);
 
   name = "paired"; elements[name] = pairedPtr = std::make_shared<BoolSensor>(path + "/" + name, this, false);
+  // Persisted: the last pairing the SDK reported, so the UI can tell a paired but disabled Soundtrack (the SDK, and with
+  // it the auth status, only runs while enabled). Only a definite auth status changes it, see syncSensorState().
+  name = "lastPaired"; elements[name] = lastPairedPtr = std::make_shared<BoolControl>(path + "/" + name, this, false);
   name = "authStatus"; elements[name] = authStatusPtr = std::make_shared<StringSensor>(path + "/" + name, this, "unknown");
   name = "deviceId"; elements[name] = deviceIdPtr = std::make_shared<StringSensor>(path + "/" + name, this, "", 256);
   name = "pairCode"; elements[name] = pairCodePtr = std::make_shared<StringControl>(path + "/" + name, this, "", 16, false, true);
@@ -319,10 +322,28 @@ void Soundtrack::syncSensorState()
   const int authStatus = static_cast<int>(authApi->get_auth_status(splayer));
   authStatusPtr->set(authStatusToString(authStatus));
   pairedPtr->set(authStatus == SPLAYER_AUTH_STATUS_PAIRED);
-  isPlayingPtr->set(controlsApi->is_playing(splayer) != 0);
+  if (authStatus == SPLAYER_AUTH_STATUS_PAIRED)
+  {
+    lastPairedPtr->set(true);
+  }
+  else if (authStatus == SPLAYER_AUTH_STATUS_NOT_PAIRED)
+  {
+    lastPairedPtr->set(false);
+  }
+  const bool sdkPlaying = controlsApi->is_playing(splayer) != 0;
+  isPlayingPtr->set(sdkPlaying);
+  if (sdkPlaying && !playPtr->get())
+  {
+    // The SDK is playing although play is false (e.g. a fresh session after re-enable started on its own). handleControls()
+    // only runs for a stale leaf and a UI write of the unchanged play=false never makes it stale, so request it here so
+    // its force-pause runs; otherwise isPlaying stays true and the play button cannot recover.
+    stale = true;
+  }
 
   const int volume = controlsApi->get_volume(splayer);
-  if (volume >= 0 && volume <= 100 && !mutePtr->get())
+  // Not while a volume write is waiting for handleControls(): a write from the target UI is only marked modified, and
+  // the sensors tick runs this before handleControls(), so it would put the SDK's old volume back over the new one.
+  if (volume >= 0 && volume <= 100 && !mutePtr->get() && !volumePtr->isModified(false))
   {
     volumePtr->set(static_cast<uint32_t>(volume));
   }

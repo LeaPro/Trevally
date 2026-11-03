@@ -48,7 +48,7 @@ private:
   void run();
   Outcome lookup(const Track &track, std::string &file);
   bool search(const std::string &endpoint, const std::string &query, std::string &body); // false: no usable answer
-  std::string fetchFront(const std::vector<std::string> &releaseIds, std::vector<std::string> &tried);
+  std::string fetchFront(const std::vector<std::string> &releaseIds, std::vector<std::string> &tried, bool &transientFailure);
   void store(const std::string &key, const Entry &entry); // mutex_ held
 
   std::thread thread_;

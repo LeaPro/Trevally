@@ -30,6 +30,7 @@
 #include "ui/components/scroll_pane.h"
 #include "ui/components/now_playing_ribbon.h"
 #include "ui/components/home_footer.h"
+#include "ui/components/home_controls.h"
 #include "ui/components/playback_page.h"
 #include "ui/components/setup_page.h"
 #include "ui/nav.h"
@@ -582,6 +583,7 @@ static lv_obj_t *homeScreen;
 static lv_obj_t *homePane;
 static lv_obj_t *homeHeader;
 static lv_obj_t *homeRibbon;
+static lv_obj_t *homeControls;
 static lv_obj_t *homeFooter;
 
 // Playback destination: reached by tapping the album art on the home ribbon; its back button returns home.
@@ -641,21 +643,27 @@ static void buildHome()
                             &satoshi_medium_24);
 
   // Now-playing ribbon: portrait, the strip under the pane across the display; landscape, the top of the
-  // panel right of the pane. It hides itself while nothing is playing.
+  // panel right of the pane. It hides itself while no audio source is enabled; the control icons share that
+  // panel (home_controls.h).
   const int displayW = lv_display_get_horizontal_resolution(lv_obj_get_display(homeScreen));
+  const int displayH = lv_display_get_vertical_resolution(lv_obj_get_display(homeScreen));
   if (ui_is_landscape())
   {
+    homeControls = home_controls_create(homeScreen, displayW - ui_content_w(), displayH - HOME_FOOTER_H_PX);
+    lv_obj_align(homeControls, LV_ALIGN_TOP_LEFT, ui_content_w(), 0);
     homeRibbon = now_playing_ribbon_create(homeScreen, displayW - ui_content_w(), ribbonArtTapCb);
     lv_obj_align(homeRibbon, LV_ALIGN_TOP_LEFT, ui_content_w(), 0);
   }
   else
   {
+    const int panelTop = UI_HEADER_H_PX + ui_pane_h();
+    homeControls = home_controls_create(homeScreen, displayW, displayH - HOME_FOOTER_H_PX - panelTop);
+    lv_obj_align(homeControls, LV_ALIGN_TOP_LEFT, 0, panelTop);
     homeRibbon = now_playing_ribbon_create(homeScreen, displayW, ribbonArtTapCb);
     lv_obj_align(homeRibbon, LV_ALIGN_TOP_LEFT, 0, UI_HEADER_H_PX + ui_pane_h());
   }
 
   // Footer: date and time, LEA logo and sleep icon, along the bottom of the same panel.
-  const int displayH = lv_display_get_vertical_resolution(lv_obj_get_display(homeScreen));
   if (ui_is_landscape())
   {
     homeFooter = home_footer_create(homeScreen, displayW - ui_content_w(), 22);
@@ -714,7 +722,7 @@ static void buildSettings()
 static void buildPlayback()
 {
   playbackDest = nav_screen_create();
-  playback_page_create(playbackDest.screen);
+  playback_page_create(playbackDest.screen, playbackDest.focus);
 }
 
 // Setup destination: shown instead of home while /misc/setupMode is set (the device has not
@@ -782,10 +790,12 @@ static void rebuildForOrientation()
   scroll_pane_destroy(homePane);
   lv_obj_delete(homeHeader);
   lv_obj_delete(homeRibbon);
+  lv_obj_delete(homeControls);
   lv_obj_delete(homeFooter);
   homePane = nullptr;
   homeHeader = nullptr;
   homeRibbon = nullptr;
+  homeControls = nullptr;
   homeFooter = nullptr;
 
   applyOrientation();
@@ -833,9 +843,13 @@ static void scheduleLvglTick(std::shared_ptr<boost::asio::steady_timer> timer,
 
   bool screensChanged = screens && screens->isModified({screens->configPtr, screens->screenOrderPtr});
   screensChanged |= tiles && tiles->isModified({tiles->configPtr});
+  // A tile page that changes its own tile (a streaming tile's service) must stay open; any other change
+  // may have removed the tile an open page belongs to.
+  const bool editedByUi = tile_take_ui_edit();
   if (screensChanged && homePane)
   {
-    nav_close_pages(false);   // an open page may belong to a tile that no longer exists
+    if (!editedByUi)
+      nav_close_pages(false);   // an open page may belong to a tile that no longer exists
     scroll_pane_refresh(homePane);
   }
   if (homePane && homeHeader)

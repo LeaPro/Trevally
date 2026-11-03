@@ -189,6 +189,10 @@ Bluetooth::Bluetooth(std::string path, Object *parent) : LeafObject(path, parent
   // true: skip to the next / previous track on the phone; resets to false right away
   name = "next"; elements[name] = nextPtr = std::make_shared<BoolControl>(path + "/" + name, this, false/*default*/, false/*persist*/);
   name = "previous"; elements[name] = previousPtr = std::make_shared<BoolControl>(path + "/" + name, this, false/*default*/, false/*persist*/);
+  // shuffle / repeat: true turns the phone's shuffle (all tracks) / repeat (all tracks) on, false turns it off. They follow the phone when it
+  // changes them, like play; they read false while nothing is connected or the phone does not report the setting.
+  name = "shuffle"; elements[name] = shufflePtr = std::make_shared<BoolControl>(path + "/" + name, this, false/*default*/, false/*persist*/);
+  name = "repeat"; elements[name] = repeatPtr = std::make_shared<BoolControl>(path + "/" + name, this, false/*default*/, false/*persist*/);
 
   context_ = g_main_context_new();
   loop_ = g_main_loop_new(context_, FALSE);
@@ -413,6 +417,50 @@ void Bluetooth::syncPlayback(std::chrono::steady_clock::time_point now)
   }
 }
 
+// shuffle / repeat: the element is the request and follows the phone's setting. The phone only reports whether the mode is "off",
+// so turning one on asks for all tracks.
+void Bluetooth::syncPlayerSetting(const std::shared_ptr<BoolControl> &ptr, SettingSync &sync, const char *property, const char *onValue,
+                                  std::optional<bool> phoneValue, std::chrono::steady_clock::time_point now)
+{
+  if (!enablePtr->get() || !phoneValue)
+  {
+    // not the selected audio source, or no phone setting to follow: refuse requests and read false
+    ptr->isModified();
+    sync.pending = false;
+    if (ptr->get())
+    {
+      ptr->set(false);
+      ptr->isModified();
+    }
+    return;
+  }
+
+  if (ptr->isModified()) // clears the flag; only a real write gets here, the flag was cleared while there was no phone
+  {
+    const bool requested = ptr->get();
+    if (requested != *phoneValue)
+    {
+      setPlayerProperty(connectedMac, property, requested ? onValue : "off");
+      sync.pending = true;
+      sync.pendingValue = requested;
+      sync.holdUntil = now + STATUS_HOLD; // keep the request until the phone has applied it
+    }
+  }
+
+  if (sync.pending)
+  {
+    if (*phoneValue != sync.pendingValue && now < sync.holdUntil)
+      return; // the phone has not applied the request yet
+    sync.pending = false;
+  }
+  if (ptr->get() != *phoneValue)
+  {
+    // changed on the phone, or the request could not be applied: follow the phone without echoing it back
+    ptr->set(*phoneValue);
+    ptr->isModified();
+  }
+}
+
 // next / previous: momentary controls that skip the phone's track
 void Bluetooth::handleTrackButtons()
 {
@@ -467,6 +515,11 @@ void Bluetooth::update(bool sensorsOnly, bool refreshVolatileElements)
   syncVolume();
   handleTrackButtons();
   syncPlayback(now);
+  {
+    const std::optional<Player> phone = player(connectedMac);
+    syncPlayerSetting(shufflePtr, shuffleSync, "Shuffle", "alltracks", phone ? phone->shuffle : std::nullopt, now);
+    syncPlayerSetting(repeatPtr, repeatSync, "Repeat", "alltracks", phone ? phone->repeat : std::nullopt, now);
+  }
   updateTrackMetadata();
   updateAlbumArt();
   syncExternalPairing(now);
@@ -782,6 +835,10 @@ void Bluetooth::applyProperty(const std::string &path, const std::string &iface,
       p.positionMs = g_variant_get_uint32(value);
       p.positionAt = std::chrono::steady_clock::now();
     }
+    else if (key == "Shuffle" && isType(value, G_VARIANT_TYPE_STRING))
+      p.shuffle = stringOf(value) != "off";
+    else if (key == "Repeat" && isType(value, G_VARIANT_TYPE_STRING))
+      p.repeat = stringOf(value) != "off";
     else if (key == "Track" && isType(value, G_VARIANT_TYPE("a{sv}")))
     {
       // the property always carries the complete track: whatever is missing is empty
@@ -1067,6 +1124,26 @@ void Bluetooth::playerCommand(const std::string &mac, const char *method)
               }
               if (!playerPath.empty())
                 busCall(BLUEZ, playerPath, IFACE_PLAYER, name.c_str(), nullptr, DEFAULT_TIMEOUT_MS);
+            });
+}
+
+void Bluetooth::setPlayerProperty(const std::string &mac, const char *name, const char *value)
+{
+  const std::string property = name, newValue = value; // the literals may not outlive the posted function
+  postToBus([this, mac, property, newValue]()
+            {
+              std::string playerPath;
+              {
+                std::lock_guard<std::mutex> lock(mutex_);
+                for (const auto &p : players_)
+                  if (p.second.mac == mac)
+                  {
+                    playerPath = p.first;
+                    break;
+                  }
+              }
+              if (!playerPath.empty())
+                busSetProperty(BLUEZ, playerPath, IFACE_PLAYER, property.c_str(), g_variant_new_string(newValue.c_str()));
             });
 }
 

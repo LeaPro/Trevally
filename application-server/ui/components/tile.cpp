@@ -16,7 +16,7 @@
 #include <vector>
 
 #include <object.h>
-
+#include <Tiles.h>
 /* The device's root object (defined in main.cpp). */
 extern std::shared_ptr<RootObject> root;
 
@@ -44,6 +44,7 @@ struct TileTap {
     lv_obj_t   *tile;
     lv_obj_t   *screen;
     tile_type_t type;
+    std::string id;
     std::string name;
     std::string binding;
 };
@@ -56,13 +57,14 @@ static void tile_clicked_cb(lv_event_t *e)
         if (t.tile != tile) continue;
         switch (t.type) {
         case BLUETOOTH: tile_bluetooth_volume_open(t.name, t.binding); break;
+        case STREAMING: tile_streaming_volume_open(t.name, t.binding, t.id); break;
         default: break;
         }
         return;
     }
 }
 
-lv_obj_t *tile_create(lv_obj_t *parent, tile_type_t type,
+lv_obj_t *tile_create(lv_obj_t *parent, tile_type_t type, const std::string &id,
                       const std::string &name, const std::string &binding,
                       int w, int h)
 {
@@ -86,12 +88,47 @@ lv_obj_t *tile_create(lv_obj_t *parent, tile_type_t type,
     }
 
     /* Types that have a page open it when tapped. */
-    if (type == BLUETOOTH) {
+    if (type == BLUETOOTH || type == STREAMING) {
         lv_obj_add_flag(tile, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_add_event_cb(tile, tile_clicked_cb, LV_EVENT_CLICKED, NULL);
-        tileTaps.push_back({tile, lv_obj_get_screen(tile), type, name, binding});
+        tileTaps.push_back({tile, lv_obj_get_screen(tile), type, id, name, binding});
     }
     return tile;
+}
+
+static bool uiEditPending = false;
+
+std::string tile_binding_read(const std::string &tileId)
+{
+    auto tiles = std::dynamic_pointer_cast<Tiles>(root->leafFromPath("/tiles"));
+    if (!tiles) return std::string();
+    const json config = tiles->configPtr->get();
+    auto tileIt = config.find(tileId);
+    if (tileIt == config.end() || !tileIt->is_object()) return std::string();
+    auto bindingIt = tileIt->find("binding");
+    return (bindingIt != tileIt->end() && bindingIt->is_string()) ? bindingIt->get<std::string>() : std::string();
+}
+
+bool tile_binding_set(const std::string &tileId, const std::string &binding)
+{
+    auto tiles = std::dynamic_pointer_cast<Tiles>(root->leafFromPath("/tiles"));
+    if (!tiles) return false;
+    json config = tiles->configPtr->get();
+    auto tileIt = config.find(tileId);
+    if (tileIt == config.end() || !tileIt->is_object()) return false;
+    if (tile_binding_read(tileId) == binding) return true;
+
+    (*tileIt)["binding"] = binding;
+    uiEditPending = true;   /* only when the config really changes, or it would linger */
+    tiles->configPtr->set(config);
+    return true;
+}
+
+bool tile_take_ui_edit()
+{
+    const bool pending = uiEditPending;
+    uiEditPending = false;
+    return pending;
 }
 
 /* =========================================================================

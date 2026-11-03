@@ -9,7 +9,7 @@
  * is placed from the left (art, equalizer, title) and from the right (play/pause).
  *
  * The ribbon follows the active audio source (see audio_source.h) by itself (timer of its own): it is hidden
- * while no source has a track, the equalizer runs while it plays, and the button shows pause while it plays and
+ * while no source is enabled (it is shown with an empty title while the source has no track), the equalizer runs while it plays, and the button shows pause while it plays and
  * play while it is paused. Tapping the button toggles that source's playback.
  */
 

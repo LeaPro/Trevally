@@ -6,6 +6,7 @@
 #include "playback_page.h"
 #include "audio_source.h"
 #include "album_art.h"
+#include "control_button.h"
 #include "play_button.h"
 #include "tile.h"
 #include "../nav.h"
@@ -14,6 +15,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <string>
+#include <vector>
 
 /* Geometry from the Figma "Streaming Controls" frames (portrait 5455:9472, landscape 5552:27240). The text row and the
  * progress block form one column; in portrait it starts below the art, in landscape the row is at the top of the right-hand
@@ -39,18 +41,41 @@
 #define LOGO_W                78
 #define LOGO_H                24
 
+/* The control buttons sit in the four corners of the area under the text and progress rows. Portrait: the 434px bottom block
+ * of the screen (top buttons 135 from its top, bottom buttons 57 from its bottom). Landscape: the right-hand panel (top buttons
+ * 72 from the top, bottom buttons 72 from the bottom). */
+#define PORTRAIT_CONTROLS_H         434
+#define PORTRAIT_CONTROLS_TOP_Y     135
+#define PORTRAIT_CONTROLS_BOTTOM    57
+#define PORTRAIT_CONTROL_H          98
+#define LANDSCAPE_CONTROLS_EDGE     72
+#define LANDSCAPE_CONTROL_H         78
+
 #define BACK_SLOT_PX          84     /* touch target */
 #define BACK_CIRCLE_PX        64     /* what is drawn, centred in the slot */
 
 #define POLL_MS               200
 
+/* The volume overlay (Figma 5877:16043 portrait, 5905:40248 landscape): the art dimmed to 40% (black at 60% over it)
+ * with the volume in the middle, shown while the encoder is turned. */
+#define VOLUME_OVERLAY_OPA    LV_OPA_60
+#define VOLUME_OVERLAY_MS     1500   /* hidden this long after the last turn */
+#define VOLUME_VALUE_GAP      11     /* between the number and the % sign */
+
 struct PlaybackPage {
+    lv_obj_t   *volumeOverlay; /* over the art; hidden unless the encoder was turned just now */
+    lv_obj_t   *volumeValue;   /* the number in it */
+    uint32_t    volumeTurnedAt; /* lv_tick of the last turn */
     lv_obj_t   *info;          /* column of album / title / artist labels, rebuilt when the track changes */
     lv_obj_t   *progress;      /* bar and times; hidden when the source has no track length */
     lv_obj_t   *fill;
     lv_obj_t   *knob;
     lv_obj_t   *position;      /* elapsed time label */
     lv_obj_t   *remaining;     /* time left label */
+    lv_obj_t   *controls;      /* the corner buttons of the active source's supported controls */
+    std::vector<const AudioControl *> shownControls;   /* what controls holds now */
+    int         controlsW;     /* size of the controls area */
+    int         controlsH;
     lv_timer_t *timer;
     int         infoMaxW;
     int         barW;
@@ -97,11 +122,43 @@ static void show_progress(PlaybackPage *p, int position, int duration)
     lv_label_set_text(p->remaining, ("-" + format_time(duration - shown)).c_str());
 }
 
+/* Rebuilds the corner buttons for @p controls: only the controls the active source supports are shown. */
+static void rebuild_controls(PlaybackPage *p, std::vector<const AudioControl *> controls)
+{
+    lv_obj_clean(p->controls);
+
+    const bool landscape = ui_is_landscape();
+    const int w = p->controlsW;
+    const int h = p->controlsH;
+    const int buttonH = landscape ? LANDSCAPE_CONTROL_H : PORTRAIT_CONTROL_H;
+    const int topY    = landscape ? LANDSCAPE_CONTROLS_EDGE : PORTRAIT_CONTROLS_TOP_Y;
+    const int bottomY = landscape ? h - LANDSCAPE_CONTROLS_EDGE - buttonH : h - PORTRAIT_CONTROLS_BOTTOM - buttonH;
+
+    for (const AudioControl *control : controls) {
+        const bool right  = control->corner == AUDIO_CORNER_TOP_RIGHT || control->corner == AUDIO_CORNER_BOTTOM_RIGHT;
+        const bool bottom = control->corner == AUDIO_CORNER_BOTTOM_LEFT || control->corner == AUDIO_CORNER_BOTTOM_RIGHT;
+        lv_obj_t *button = control_button_create(p->controls, buttonH, control);
+        lv_obj_set_pos(button, right ? w - CONTROL_BUTTON_W : 0, bottom ? bottomY : topY);
+    }
+    p->shownControls = std::move(controls);
+}
+
 static void refresh(lv_timer_t *timer)
 {
     PlaybackPage *p = (PlaybackPage *)lv_timer_get_user_data(timer);
 
     const AudioSource *source = audio_source_active();
+
+    std::vector<const AudioControl *> controls = audio_source_controls(source);
+    if (controls != p->shownControls) rebuild_controls(p, std::move(controls));
+
+    if (!lv_obj_has_flag(p->volumeOverlay, LV_OBJ_FLAG_HIDDEN)) {
+        if (lv_tick_elaps(p->volumeTurnedAt) >= VOLUME_OVERLAY_MS)
+            lv_obj_add_flag(p->volumeOverlay, LV_OBJ_FLAG_HIDDEN);
+        else if (source)
+            lv_label_set_text(p->volumeValue, tile_format_number(tile_read_number(source->path, "volume").value).c_str());
+    }
+
     const std::string album  = ui_is_landscape() ? std::string() : audio_source_text(source, "trackAlbum");
     const std::string title  = audio_source_text(source, "trackTitle");
     const std::string artist = audio_source_text(source, "trackArtist");
@@ -164,6 +221,47 @@ static void progress_create(PlaybackPage *p, lv_obj_t *screen, int x, int y, int
     lv_obj_align(p->remaining, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
 }
 
+/* Covers the art (w x h at the top left): dims it and shows the volume of the active source as a big number and a
+ * % sign. Starts hidden. Not clickable, so touches still reach what is under it. */
+static void volume_overlay_create(PlaybackPage *p, lv_obj_t *screen, int w, int h)
+{
+    p->volumeOverlay = tile_container(screen);
+    lv_obj_set_size(p->volumeOverlay, w, h);
+    lv_obj_align(p->volumeOverlay, LV_ALIGN_TOP_LEFT, 0, 0);
+    lv_obj_set_style_bg_color(p->volumeOverlay, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(p->volumeOverlay, VOLUME_OVERLAY_OPA, 0);
+    lv_obj_set_layout(p->volumeOverlay, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(p->volumeOverlay, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(p->volumeOverlay, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_gap(p->volumeOverlay, VOLUME_VALUE_GAP, 0);
+
+    p->volumeValue = lv_label_create(p->volumeOverlay);
+    lv_obj_set_style_text_font(p->volumeValue, &satoshi_medium_140, 0);
+    lv_obj_set_style_text_color(p->volumeValue, lv_color_white(), 0);
+
+    lv_obj_t *percent = lv_label_create(p->volumeOverlay);
+    lv_label_set_text(percent, "%");
+    lv_obj_set_style_text_font(percent, &satoshi_medium_48, 0);
+    lv_obj_set_style_text_color(percent, lv_color_white(), 0);
+
+    lv_obj_add_flag(p->volumeOverlay, LV_OBJ_FLAG_HIDDEN);
+}
+
+/* Encoder rotation: one volume step per tick on the active source, and the overlay shows the result. */
+static void page_key_cb(lv_event_t *e)
+{
+    PlaybackPage *p = (PlaybackPage *)lv_event_get_user_data(e);
+    const uint32_t key = lv_event_get_key(e);
+    const int step = (key == LV_KEY_RIGHT) ? 1 : (key == LV_KEY_LEFT) ? -1 : 0;
+    const AudioSource *source = audio_source_active();
+    if (step == 0 || !source) return;
+
+    tile_step_number(source->path, "volume", step);
+    lv_label_set_text(p->volumeValue, tile_format_number(tile_read_number(source->path, "volume").value).c_str());
+    p->volumeTurnedAt = lv_tick_get();
+    lv_obj_remove_flag(p->volumeOverlay, LV_OBJ_FLAG_HIDDEN);
+}
+
 /* The back button: a half-transparent black disc with the arrow, over the art. */
 static void back_button_create(lv_obj_t *parent)
 {
@@ -184,7 +282,7 @@ static void back_button_create(lv_obj_t *parent)
     if (icon) lv_obj_center(icon);
 }
 
-void playback_page_create(lv_obj_t *screen)
+void playback_page_create(lv_obj_t *screen, lv_obj_t *focus)
 {
     const bool landscape = ui_is_landscape();
     const int displayW = lv_display_get_horizontal_resolution(nullptr);
@@ -192,10 +290,13 @@ void playback_page_create(lv_obj_t *screen)
 
     PlaybackPage *p = new PlaybackPage{};
 
-    lv_obj_t *art = album_art_create(screen, landscape ? LANDSCAPE_ART_W : displayW,
-                                     landscape ? displayH : PORTRAIT_ART_H, 0);
+    const int artW = landscape ? LANDSCAPE_ART_W : displayW;
+    const int artH = landscape ? displayH : PORTRAIT_ART_H;
+    lv_obj_t *art = album_art_create(screen, artW, artH, 0);
     lv_obj_align(art, LV_ALIGN_TOP_LEFT, 0, 0);
     back_button_create(screen);
+    volume_overlay_create(p, screen, artW, artH);
+    lv_obj_add_event_cb(focus, page_key_cb, LV_EVENT_KEY, p);
 
     /* the column the text row and the progress block share */
     const int columnX = landscape ? LANDSCAPE_ART_W : 0;
@@ -218,6 +319,13 @@ void playback_page_create(lv_obj_t *screen)
                                     : infoY + INFO_H + PROGRESS_GAP_ABOVE;
     progress_create(p, screen, columnX + PROGRESS_SIDE_PAD, progressY, columnW - 2 * PROGRESS_SIDE_PAD);
 
+    const int controlsH = landscape ? displayH : PORTRAIT_CONTROLS_H;
+    p->controlsW = columnW;
+    p->controlsH = controlsH;
+    p->controls = tile_container(screen);
+    lv_obj_set_size(p->controls, columnW, controlsH);
+    lv_obj_set_pos(p->controls, columnX, displayH - controlsH);
+    lv_obj_clear_flag(p->controls, LV_OBJ_FLAG_CLICKABLE);
     if (!landscape) {
         lv_obj_t *logo = UI_ICON_CREATE_DEFAULT(screen, UI_ICON_LOGO);
         if (logo) lv_obj_set_pos(logo, (displayW - LOGO_W) / 2, displayH - PORTRAIT_LOGO_BOTTOM - LOGO_H);

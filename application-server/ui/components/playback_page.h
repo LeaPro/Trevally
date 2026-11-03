@@ -8,6 +8,8 @@
  *   Landscape: the album art on the left; title and artist with the play / pause button at the top of the right-hand
  *              panel, the progress bar with the times at its bottom.
  * A back button sits over the top left of the art. The progress bar is hidden while the source reports no track length.
+ * Encoder rotation changes the volume of the active source by one percent per tick; while it is turned the art is dimmed
+ * and the volume is shown over it as a big percentage (Figma 5877:16043, 5905:40248), for a moment after the last turn.
  * Not built yet: the buttons along the top other than back, the previous / next / shuffle / repeat buttons, the knob.
  *
  * The page is a navigation destination (see nav.h): build it on a nav_screen_create() screen and reach it with
@@ -20,7 +22,7 @@
 
 #include "lvgl/lvgl.h"
 
-/** Builds the page's widgets on @p screen. */
-void playback_page_create(lv_obj_t *screen);
+/** Builds the page's widgets on @p screen; @p focus is the destination's focus object, which receives the encoder. */
+void playback_page_create(lv_obj_t *screen, lv_obj_t *focus);
 
 #endif /* PLAYBACK_PAGE_H */

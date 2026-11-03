@@ -49,6 +49,7 @@ private:
   std::shared_ptr<BoolSensor> sdkReadyPtr;
   std::shared_ptr<BoolSensor> websiteReachablePtr;
   std::shared_ptr<BoolSensor> pairedPtr;
+  std::shared_ptr<BoolControl> lastPairedPtr;
   std::shared_ptr<StringSensor> authStatusPtr;
   std::shared_ptr<StringSensor> deviceIdPtr;
   std::shared_ptr<BoolSensor> isPlayingPtr;
