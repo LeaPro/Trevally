@@ -138,6 +138,7 @@ int main(int argc, char *argv[])
     root->addLeaf<DateTime>("/dateTime");
     root->addLeaf<Themes>("/themes");
     root->addLeaf<Weather>("/weather");
+    root->addLeaf<NSTProxy>("/NSTProxy");
     #if SOUNDTRACK_ENABLED
     root->addLeaf<Soundtrack>("/soundtrack");
     #endif
