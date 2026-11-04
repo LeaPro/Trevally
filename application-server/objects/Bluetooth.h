@@ -1,6 +1,7 @@
 #pragma once
 #include <object.h>
 #include "AlbumArtLookup.h"
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <functional>
@@ -88,6 +89,7 @@ private:
   void handleRequestConnect(std::chrono::steady_clock::time_point now);
   void handleDisconnect();
   void handleReset();
+  void syncService(std::chrono::steady_clock::time_point now);
   void updateDeviceLists();
   void updateConnectedDevice();
   void updateTrackMetadata();
@@ -158,6 +160,7 @@ private:
   std::shared_ptr<BoolControl> scanPtr;
   std::shared_ptr<BoolControl> enableExternalPairingPtr;
   std::shared_ptr<BoolControl> resetPtr;
+  std::shared_ptr<BoolControl> serviceRunningPtr;
   std::shared_ptr<BoolControl> disconnectDevicePtr;
   std::shared_ptr<StringControl> removeDevicePtr;
   std::shared_ptr<StringControl> requestConnectPtr;
@@ -180,6 +183,11 @@ private:
   std::shared_ptr<BoolControl> shufflePtr;
   std::shared_ptr<BoolControl> repeatPtr;
 
+  std::atomic<int> bluezRunning_{-1};        // org.bluez has an owner on the bus: -1 until the watch reports, 0 stopped, 1 running
+  bool serviceInitialised = false;           // serviceRunning has taken over the actual state once
+  bool servicePending = false;               // a start/stop was requested and the service has not reached that state yet
+  bool servicePendingValue = false;          // what that request asked for
+  std::chrono::steady_clock::time_point serviceHoldUntil{};
   std::string connectedMac;                  // MAC of the device connectedDevice currently describes (empty when none)
   AlbumArtLookup albumArt_;                  // finds the album art of the current track by artist / album / title
   int lastStreamVolume = -1;                 // last stream volume (0-127) seen on / sent to BlueALSA

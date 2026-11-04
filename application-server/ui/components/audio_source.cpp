@@ -32,9 +32,10 @@ static bool has_text(const char *leafPath, const char *elementName)
     return !read_text(leafPath, elementName).empty();
 }
 
-/* Bluetooth: green when a device is connected, yellow when devices are paired. */
+/* Bluetooth: red when the bluetooth service is stopped, green when a device is connected, yellow when devices are paired. */
 static AudioSourceState bluetooth_state(const char *path)
 {
+    if (!tile_read_bool(path, "serviceRunning")) return AUDIO_SOURCE_RED;
     if (has_text(path, "connectedDevice")) return AUDIO_SOURCE_GREEN;
     if (has_text(path, "pairedDevices"))   return AUDIO_SOURCE_YELLOW;
     return AUDIO_SOURCE_GRAY;
@@ -68,7 +69,7 @@ static AudioSourceState custom_channels_state(const char *path)
  * (e.g. Soundtrack in builds without it) reads as disabled and gray. */
 static const AudioSource SOURCES[] = {
     {"/bluetooth",      "Bluetooth",       false, bluetooth_state},
-    {"/soundtrack",     "Soundtrack",      true,  soundtrack_state},
+    {"/soundtrack",     "Soundtrack.io",   true,  soundtrack_state},
     {"/customChannels", "Custom Channels", true,  custom_channels_state},
 };
 
@@ -98,12 +99,29 @@ static std::string lower(std::string s)
     return s;
 }
 
+bool audio_source_binding_is_default(const std::string &binding)
+{
+    return lower(binding) == lower(AUDIO_SOURCE_DEFAULT_BINDING);
+}
+
 std::string audio_source_leaf_path(const std::string &binding)
 {
+    if (audio_source_binding_is_default(binding)) {
+        for (const AudioSource &s : SOURCES)
+            if (s.streaming && tile_read_bool(s.path, "enable")) return s.path;
+        return std::string();
+    }
     const std::string wanted = lower(binding);
     for (const AudioSource &s : SOURCES)
         if (lower(s.path + 1) == wanted) return s.path;
     return std::string();
+}
+
+bool audio_source_is_streaming_binding(const std::string &binding)
+{
+    if (audio_source_binding_is_default(binding)) return true;
+    const AudioSource *source = find_source(audio_source_leaf_path(binding));
+    return source && source->streaming;
 }
 
 std::vector<const AudioSource *> audio_source_streaming_sources()

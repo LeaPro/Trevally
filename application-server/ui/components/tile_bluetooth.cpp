@@ -8,6 +8,7 @@
 
 #include "tile.h"
 #include "header.h"
+#include "audio_source.h"
 #include "level_gauge.h"
 #include "picker_wheel.h"
 #include "nav.h"
@@ -158,7 +159,20 @@ struct DevicesView
     std::string               connected;
     std::vector<PairedDevice> devices;
     bool                      done = false; /* a row was activated and the page is closing */
+    std::string               pendingMac;   /* a connection to this device was requested here; Bluetooth is enabled once it is up */
+    std::string               pendingName;
+    uint32_t                  pendingAt = 0;
+    lv_obj_t                 *toast = nullptr;   /* failure message at the bottom of the page (Paired mode) */
+    uint32_t                  toastAt = 0;
 };
+
+static const uint32_t CONNECT_WAIT_MS = 30000;   /* give up waiting for a requested connection */
+static const uint32_t TOAST_MS        = 4000;
+
+static void bluetooth_connected_enable()
+{
+    audio_source_set_enabled("/bluetooth", true);
+}
 
 static std::string lower(std::string s)
 {
@@ -218,6 +232,28 @@ static std::vector<picker_wheel_item_t> make_device_items(const DevicesView &v)
  * keeping the same device selected when it is still there. */
 static void refresh_devices_view(DevicesView &v)
 {
+    if (!v.pendingMac.empty())
+    {
+        if (device_mac(tile_read_string("/bluetooth", "connectedDevice")) == v.pendingMac)
+        {
+            v.pendingMac.clear();
+            bluetooth_connected_enable();
+            return;
+        }
+        else if (lv_tick_elaps(v.pendingAt) > CONNECT_WAIT_MS)
+        {
+            v.pendingMac.clear();
+            if (v.toast)
+            {
+                lv_label_set_text(v.toast, ("Couldn't connect to " + v.pendingName).c_str());
+                lv_obj_clear_flag(v.toast, LV_OBJ_FLAG_HIDDEN);
+                v.toastAt = lv_tick_get();
+            }
+        }
+    }
+    if (v.toast && !lv_obj_has_flag(v.toast, LV_OBJ_FLAG_HIDDEN) && lv_tick_elaps(v.toastAt) > TOAST_MS)
+        lv_obj_add_flag(v.toast, LV_OBJ_FLAG_HIDDEN);
+
     std::string list, connected;
     read_devices_elements(v.mode, list, connected);
     if (list == v.list && connected == v.connected) return;
@@ -271,7 +307,6 @@ static void forget_ctx_delete_cb(lv_event_t *e)
 /* A single Forget Device button; touch taps it, an encoder press activates it. */
 static void forget_page_open(const PairedDevice &dev)
 {
-    static const lv_color_t errorColor = lv_color_hex(0xF97066);
     ForgetCtx *ctx = new ForgetCtx{dev.name, dev.mac, false};
 
     nav_page_t page = nav_screen_create();
@@ -287,15 +322,15 @@ static void forget_page_open(const PairedDevice &dev)
     lv_obj_align(btn, LV_ALIGN_TOP_LEFT, 24, UI_HEADER_H_PX + (UI_HEADER_H_PX + ui_pane_h() - btnH) / 2);
     lv_obj_set_style_radius(btn, 8, 0);
     lv_obj_set_style_border_width(btn, 2, 0);
-    lv_obj_set_style_border_color(btn, errorColor, 0);
+    lv_obj_set_style_border_color(btn, UI_COLOR_STATUS_ERROR, 0);
     lv_obj_set_style_border_opa(btn, LV_OPA_COVER, 0);
-    lv_obj_set_style_bg_color(btn, errorColor, LV_STATE_PRESSED);
+    lv_obj_set_style_bg_color(btn, UI_COLOR_STATUS_ERROR, LV_STATE_PRESSED);
     lv_obj_set_style_bg_opa(btn, LV_OPA_20, LV_STATE_PRESSED);
 
     lv_obj_t *label = lv_label_create(btn);
     lv_label_set_text(label, "Forget Device");
     lv_obj_set_style_text_font(label, &satoshi_medium_24, 0);
-    lv_obj_set_style_text_color(label, errorColor, 0);
+    lv_obj_set_style_text_color(label, UI_COLOR_STATUS_ERROR, 0);
     lv_obj_center(label);
 
     lv_obj_add_event_cb(btn, forget_cb, LV_EVENT_CLICKED, ctx);
@@ -374,7 +409,11 @@ struct PairingCtx
     bool        seenCode = false;
     bool        codeGone = false;
     bool        done = false;
+    bool        failed = false;   /* the failure message is showing; the page closes when it has been read */
+    uint32_t    failedAt = 0;
 };
+
+static const uint32_t PAIRING_FAIL_SHOW_MS = 2500;
 
 /* A code too wide for one line (6 digits at the big font) is split in two halves. */
 static std::string pairing_code_text(const std::string &code)
@@ -422,6 +461,15 @@ static void pairing_page_open(const PairedDevice &dev)
 
     tile_bind_update(code, [ctx, headline, code]()
     {
+        if (ctx->failed)
+        {
+            if (lv_tick_elaps(ctx->failedAt) > PAIRING_FAIL_SHOW_MS)
+            {
+                ctx->failed = false;
+                nav_pop();   /* back to the device list */
+            }
+            return;
+        }
         const std::string current = tile_read_string("/bluetooth", "pairingCode");
         if (current != ctx->shownCode)
         {
@@ -447,8 +495,19 @@ static void pairing_page_open(const PairedDevice &dev)
         if (connected || timedOut || gone)
         {
             ctx->done = true;
-            if (connected) paired_page_open();
-            else           nav_pop();   /* pairing failed or was refused: back to the device list */
+            if (connected)
+            {
+                bluetooth_connected_enable();
+                paired_page_open();
+            }
+            else   /* pairing failed or was refused: say so, then back to the device list */
+            {
+                ctx->failed   = true;
+                ctx->failedAt = lv_tick_get();
+                lv_label_set_text(headline, "Couldn't connect");
+                lv_obj_set_style_text_color(headline, UI_COLOR_STATUS_ERROR, 0);
+                lv_label_set_text(code, "");
+            }
         }
     });
 
@@ -467,9 +526,18 @@ static void devices_activated_cb(int index, void *user_data)
     {
         /* stays on the page; the check follows connectedDevice once the connection is up (or goes away on disconnect) */
         if (device_mac(tile_read_string("/bluetooth", "connectedDevice")) == dev.mac)
+        {
+            v.pendingMac.clear();
             tile_set_bool("/bluetooth", "disconnectDevice", true);
+        }
         else
+        {
+            v.pendingMac = dev.mac;
+            v.pendingName = dev.name;
+            v.pendingAt  = lv_tick_get();
+            if (v.toast) lv_obj_add_flag(v.toast, LV_OBJ_FLAG_HIDDEN);
             tile_set_string("/bluetooth", "requestConnect", dev.mac);
+        }
     }
     else if (v.mode == DevicesMode::Edit)
     {
@@ -547,6 +615,24 @@ static void bluetooth_devices_open(DevicesMode mode)
     lv_obj_align(picker, LV_ALIGN_TOP_LEFT, 0, UI_HEADER_H_PX);
     lv_obj_add_event_cb(picker, devices_view_delete_cb, LV_EVENT_DELETE, holder);
 
+    if (mode == DevicesMode::Paired)
+        toggle_row_create(page.screen, "/bluetooth", "serviceRunning");   /* on top of the picker's empty upper part */
+
+    if (mode == DevicesMode::Paired)
+    {
+        lv_obj_t *toast = lv_label_create(page.screen);
+        lv_obj_add_style(toast, ui_theme_get_style_bg(), 0);
+        lv_obj_set_style_bg_opa(toast, LV_OPA_COVER, 0);
+        lv_obj_set_style_text_font(toast, &satoshi_medium_24, 0);
+        lv_obj_set_style_text_color(toast, UI_COLOR_STATUS_ERROR, 0);
+        lv_obj_set_style_text_align(toast, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_set_style_pad_all(toast, 8, 0);
+        lv_label_set_long_mode(toast, LV_LABEL_LONG_DOT);
+        lv_obj_set_width(toast, ui_content_w());
+        lv_obj_align(toast, LV_ALIGN_TOP_LEFT, 0, UI_HEADER_H_PX + ui_pane_h() - lv_font_get_line_height(&satoshi_medium_24) - 16);
+        lv_obj_add_flag(toast, LV_OBJ_FLAG_HIDDEN);
+        view->toast = toast;
+    }
     tile_bind_update(picker, [view]() { refresh_devices_view(*view); });
 
     lv_obj_add_event_cb(page.focus, devices_page_key_cb, LV_EVENT_KEY, picker);
@@ -559,7 +645,7 @@ static void bluetooth_devices_open(DevicesMode mode)
     nav_push(page);
 }
 
-static void bluetooth_devices_paired_open(lv_event_t *) { bluetooth_devices_open(DevicesMode::Paired); }
+static void bluetooth_devices_paired_open(lv_event_t *)   { bluetooth_devices_open(DevicesMode::Paired); }
 static void bluetooth_devices_edit_open(lv_event_t *)   { bluetooth_devices_open(DevicesMode::Edit); }
 
 static void bluetooth_devices_discover_open(lv_event_t *)
@@ -577,7 +663,7 @@ void tile_bluetooth_devices_open(const std::string &title)
 void tile_bluetooth_volume_open(const std::string &name, const std::string &binding)
 {
     (void)binding;
-    devicesPageTitle = name;
+    devicesPageTitle = "Bluetooth";
     nav_page_t page = nav_screen_create();
 
     const header_slot_t back = {true, UI_ICON_ARROW_BACK, nav_back_cb, nullptr};
@@ -585,7 +671,10 @@ void tile_bluetooth_volume_open(const std::string &name, const std::string &bind
     header_create(page.screen, back, name.c_str(), gear);
 
     level_gauge_create(page.screen, "/bluetooth", "volume");
-    source_enable_control_create(page.screen, page.focus, "/bluetooth");
+    source_enable_control_create(page.screen, page.focus, "/bluetooth", []() {
+        const std::vector<PairedDevice> connected = parse_paired_devices(tile_read_string("/bluetooth", "connectedDevice"));
+        return connected.empty() ? std::string() : connected[0].name;
+    });
 
     lv_obj_add_event_cb(page.focus, bluetooth_page_key_cb, LV_EVENT_KEY, NULL);
     nav_push(page);

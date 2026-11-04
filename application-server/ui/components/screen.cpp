@@ -4,6 +4,7 @@
  */
 
 #include "screen.h"
+#include "audio_source.h"
 #include "tile.h"
 #include "../ui_design_tokens.h"
 
@@ -97,6 +98,10 @@ std::vector<TileSpec> readTiles(const json &screenConfig)
         spec.id      = tileId.get<std::string>();
         spec.name    = jsonString(*tileIt, "name");
         spec.binding = jsonString(*tileIt, "binding");
+        if (spec.type == STREAMING && !audio_source_is_streaming_binding(spec.binding)) {
+            spec.binding = AUDIO_SOURCE_DEFAULT_BINDING;   /* missing or malformed: follow the enabled service */
+            tile_binding_set(spec.id, spec.binding);
+        }
         specs.push_back(std::move(spec));
     }
     return specs;

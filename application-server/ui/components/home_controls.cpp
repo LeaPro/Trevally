@@ -5,6 +5,7 @@
 
 #include "home_controls.h"
 #include "audio_source.h"
+#include "audio_sources_page.h"
 #include "control_button.h"
 #include "tile.h"
 #include "../ui_design_tokens.h"
@@ -81,6 +82,8 @@ lv_obj_t *home_controls_create(lv_obj_t *parent, int w, int h)
 
     HomeControls *c = new HomeControls{};
     c->cast    = icon_area_create(area, 0,            0, PORTRAIT_BUTTON_H, UI_ICON_MUSIC_CAST);
+    lv_obj_add_flag(c->cast, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(c->cast, [](lv_event_t *) { audio_sources_page_open(); }, LV_EVENT_CLICKED, nullptr);
     c->weather = icon_area_create(area, w - CONTROL_W, 0, PORTRAIT_BUTTON_H, UI_ICON_WEATHER);
 
     c->row = tile_container(area);

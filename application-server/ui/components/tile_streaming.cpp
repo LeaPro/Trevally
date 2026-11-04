@@ -95,19 +95,22 @@ void tile_streaming_build(lv_obj_t *root, const std::string &name,
     lv_obj_set_size(row, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
     lv_obj_set_style_pad_gap(row, 4, 0);
 
-    lv_obj_t *valueLabel = tile_label(row, tile_format_number(volume.value),
+    const bool unbound = leafPath.empty();   /* a binding that names no source (or Default with no service enabled) */
+    lv_obj_t *valueLabel = tile_label(row, unbound ? std::string("-") : tile_format_number(volume.value),
                wide ? &satoshi_medium_48 : &satoshi_medium_32, ui_theme_get_style_brand());
-    tile_label(row, volume.units.empty() ? "%" : volume.units,
-               wide ? &satoshi_medium_32 : &satoshi_medium_24, ui_theme_get_style_brand());
+    if (!unbound)
+        tile_label(row, volume.units.empty() ? "%" : volume.units,
+                   wide ? &satoshi_medium_32 : &satoshi_medium_24, ui_theme_get_style_brand());
 
     tile_bind_number(valueLabel, slider, leafPath, "volume");
 }
 
 /* ---- Service page (gear on the volume page) ----
  *
- * A picker of the streaming services that are paired or configured (yellow or green); the one the
- * tile is bound to has a check. Choosing a row binds the tile to that service. The volume page
- * below was built for the old service, so leaving this page after a change rebuilds it. */
+ * A picker of "Default" (the tile follows whichever streaming service is enabled on the cast or Streaming
+ * settings page) and the streaming services that are paired or configured (yellow or green). The row the
+ * tile is bound to has a check. Choosing a row binds the tile to it. The volume page below was built for
+ * the old binding, so leaving this page after a change rebuilds it. */
 
 struct ServicesView
 {
@@ -115,28 +118,37 @@ struct ServicesView
     std::string                      tileId;
     std::string                      openedBinding;  /* the binding the volume page below was built for */
     lv_obj_t                        *picker = nullptr;
-    std::vector<const AudioSource *> sources;        /* rows, in display order */
-    std::string                      checked;        /* leaf path of the checked row, "" if none */
+    std::vector<const AudioSource *> rows;           /* in display order; nullptr is the Default row */
+    const AudioSource               *checked = nullptr;   /* the checked row's source, nullptr for Default */
 };
 
-static std::vector<const AudioSource *> configured_services()
+static std::vector<const AudioSource *> service_rows()
 {
-    std::vector<const AudioSource *> sources;
+    std::vector<const AudioSource *> rows = {nullptr};
     for (const AudioSource *s : audio_source_streaming_sources())
-        if (audio_source_state(s->path) != AUDIO_SOURCE_GRAY) sources.push_back(s);
-    return sources;
+        if (audio_source_state(s->path) != AUDIO_SOURCE_GRAY) rows.push_back(s);
+    return rows;
+}
+
+/* The source the binding names; nullptr for the default binding (and for one that names nothing). */
+static const AudioSource *bound_source(const std::string &binding)
+{
+    if (audio_source_binding_is_default(binding)) return nullptr;
+    const std::string path = audio_source_leaf_path(binding);
+    for (const AudioSource *s : audio_source_streaming_sources())
+        if (path == s->path) return s;
+    return nullptr;
 }
 
 static std::vector<picker_wheel_item_t> make_service_items(const ServicesView &v)
 {
-    std::vector<picker_wheel_item_t> items(v.sources.empty() ? 1 : v.sources.size());
+    std::vector<picker_wheel_item_t> items(v.rows.size());
     for (size_t i = 0; i < items.size(); i++)
     {
-        items[i].primary_text       = !v.sources.empty() ? v.sources[i]->name : "No streaming services";
+        items[i].primary_text       = v.rows[i] ? v.rows[i]->name : "<default>";
         items[i].primary_text_align = LV_TEXT_ALIGN_CENTER;
-        items[i].accessory = (!v.sources.empty() && v.checked == v.sources[i]->path)
-                                 ? PICKER_WHEEL_ITEM_ACCESSORY_CHECK
-                                 : PICKER_WHEEL_ITEM_ACCESSORY_NONE;
+        items[i].accessory = v.rows[i] == v.checked ? PICKER_WHEEL_ITEM_ACCESSORY_CHECK
+                                                    : PICKER_WHEEL_ITEM_ACCESSORY_NONE;
     }
     return items;
 }
@@ -144,19 +156,21 @@ static std::vector<picker_wheel_item_t> make_service_items(const ServicesView &v
 /* Rebuilds the rows in place when the services or the tile's binding changed, keeping the selection. */
 static void refresh_services_view(ServicesView &v)
 {
-    const std::vector<const AudioSource *> sources = configured_services();
-    const std::string checked = audio_source_leaf_path(tile_binding_read(v.tileId));
-    if (sources == v.sources && checked == v.checked) return;
+    const std::vector<const AudioSource *> rows = service_rows();
+    const AudioSource *checked = bound_source(tile_binding_read(v.tileId));
+    if (rows == v.rows && checked == v.checked) return;
 
     const int selected = picker_wheel_get_selected(v.picker);
-    const AudioSource *selectedSource = (selected >= 0 && selected < (int)v.sources.size()) ? v.sources[selected] : nullptr;
+    const bool hadSelection = selected >= 0 && selected < (int)v.rows.size();
+    const AudioSource *selectedSource = hadSelection ? v.rows[selected] : nullptr;
 
-    v.sources = sources;
+    v.rows    = rows;
     v.checked = checked;
 
-    int newSelected = selected < 0 ? 0 : selected;
-    for (size_t i = 0; i < v.sources.size(); i++)
-        if (v.sources[i] == selectedSource) newSelected = (int)i;
+    int newSelected = hadSelection ? selected : 0;
+    if (hadSelection)
+        for (size_t i = 0; i < v.rows.size(); i++)
+            if (v.rows[i] == selectedSource) newSelected = (int)i;
 
     const std::vector<picker_wheel_item_t> items = make_service_items(v);
     picker_wheel_set_items(v.picker, items.data(), (int)items.size(), newSelected);
@@ -165,8 +179,10 @@ static void refresh_services_view(ServicesView &v)
 static void services_activated_cb(int index, void *user_data)
 {
     ServicesView &v = **static_cast<std::shared_ptr<ServicesView> *>(user_data);
-    if (index < 0 || index >= (int)v.sources.size()) return;
-    tile_binding_set(v.tileId, v.sources[index]->path + 1);   /* the leaf's name, without the slash */
+    if (index < 0 || index >= (int)v.rows.size()) return;
+    const AudioSource *source = v.rows[index];
+    tile_binding_set(v.tileId, source ? std::string(source->path + 1)   /* the leaf's name, without the slash */
+                                      : std::string(AUDIO_SOURCE_DEFAULT_BINDING));
     refresh_services_view(v);
 }
 
@@ -209,8 +225,8 @@ static void streaming_services_open(const std::string &name, const std::string &
     view->name          = name;
     view->tileId        = tileId;
     view->openedBinding = openedBinding;
-    view->sources       = configured_services();
-    view->checked       = audio_source_leaf_path(tile_binding_read(tileId));
+    view->rows          = service_rows();
+    view->checked       = bound_source(tile_binding_read(tileId));
 
     auto *holder = new std::shared_ptr<ServicesView>(view);
 
@@ -221,8 +237,8 @@ static void streaming_services_open(const std::string &name, const std::string &
 
     std::vector<picker_wheel_item_t> items = make_service_items(*view);
     int selected = 0;
-    for (size_t i = 0; i < view->sources.size(); i++)
-        if (view->checked == view->sources[i]->path) selected = (int)i;
+    for (size_t i = 0; i < view->rows.size(); i++)
+        if (view->rows[i] == view->checked) selected = (int)i;
 
     picker_wheel_props_t props = {};
     props.type               = PICKER_WHEEL_TYPE_CENTER_CHECK;
@@ -287,7 +303,11 @@ void tile_streaming_volume_open(const std::string &name, const std::string &bind
     header_create(page.screen, back, name.c_str(), gear);
 
     level_gauge_create(page.screen, ctx->leafPath, "volume");
-    source_enable_control_create(page.screen, page.focus, ctx->leafPath);
+    source_enable_control_create(page.screen, page.focus, ctx->leafPath, [path = ctx->leafPath]() {
+        for (const AudioSource *s : audio_source_streaming_sources())
+            if (path == s->path) return std::string(s->name);
+        return std::string();
+    });
 
     lv_obj_add_event_cb(page.focus, streaming_page_key_cb, LV_EVENT_KEY, ctx);
     lv_obj_add_event_cb(page.screen, streaming_page_ctx_delete_cb, LV_EVENT_DELETE, ctx);

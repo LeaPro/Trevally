@@ -165,20 +165,25 @@ lv_obj_t *level_gauge_create(lv_obj_t *parent, const std::string &leafPath, cons
     lv_obj_set_style_arc_width(arc, LEVEL_GAUGE_ARC_W, LV_PART_INDICATOR);
     lv_obj_set_style_arc_rounded(arc, true, LV_PART_INDICATOR);
 
-    /* Value label and units, positioned per style (see level_gauge.h). */
-    lv_obj_t *number = tile_label(parent, tile_format_number(n.value), &satoshi_medium_140,
+    /* Value label and units, positioned per style (see level_gauge.h). With no element (an empty leafPath: an unbound
+     * streaming page) the value reads "-" and there are no other labels. */
+    const bool noElement = leafPath.empty();
+    lv_obj_t *number = tile_label(parent, noElement ? std::string("-") : tile_format_number(n.value), &satoshi_medium_140,
                                   ui_theme_get_style_text_primary());
     place(number, L.number);
 
-    lv_obj_t *units = tile_label(parent, n.units, &satoshi_medium_32, ui_theme_get_style_text_secondary());
-    place(units, L.units);
+    if (!noElement)
+    {
+        lv_obj_t *units = tile_label(parent, n.units, &satoshi_medium_32, ui_theme_get_style_text_secondary());
+        place(units, L.units);
 
-    lv_obj_t *minLabel = tile_label(parent, tile_format_number(n.min), &satoshi_medium_24,
-                                    ui_theme_get_style_text_secondary());
-    place(minLabel, L.minLabel);
-    lv_obj_t *maxLabel = tile_label(parent, tile_format_number(n.max), &satoshi_medium_24,
-                                    ui_theme_get_style_text_secondary());
-    place(maxLabel, L.maxLabel);
+        lv_obj_t *minLabel = tile_label(parent, tile_format_number(n.min), &satoshi_medium_24,
+                                        ui_theme_get_style_text_secondary());
+        place(minLabel, L.minLabel);
+        lv_obj_t *maxLabel = tile_label(parent, tile_format_number(n.max), &satoshi_medium_24,
+                                        ui_theme_get_style_text_secondary());
+        place(maxLabel, L.maxLabel);
+    }
 
     tile_bind_number(number, arc, leafPath, elementName);
     return arc;

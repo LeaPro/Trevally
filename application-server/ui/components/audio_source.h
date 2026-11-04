@@ -28,11 +28,12 @@
 #include <vector>
 
 /** How far a source is from playing: GRAY nothing paired or configured, YELLOW paired or configured but not
- *  connected, GREEN connected and live. */
+ *  connected, GREEN connected and live, RED the source's service is not running (Bluetooth only). */
 enum AudioSourceState {
     AUDIO_SOURCE_GRAY,
     AUDIO_SOURCE_YELLOW,
     AUDIO_SOURCE_GREEN,
+    AUDIO_SOURCE_RED,
 };
 
 struct AudioSource {
@@ -82,9 +83,19 @@ void audio_source_press(const AudioSource *source, const AudioControl *control);
 /** The state of the source at @p path; GRAY for a path that is not a source or whose leaf is missing. */
 AudioSourceState audio_source_state(const std::string &path);
 
+/** A streaming tile bound to this follows whichever streaming service is enabled (see audio_source_leaf_path()). */
+#define AUDIO_SOURCE_DEFAULT_BINDING "Default"
+
+/** True when @p binding is AUDIO_SOURCE_DEFAULT_BINDING (ignoring case). */
+bool audio_source_binding_is_default(const std::string &binding);
+
 /** The leaf path of the source a tile binding names, matched ignoring case ("Soundtrack" -> "/soundtrack",
- *  "CustomChannels" -> "/customChannels"); "" when the binding names no source. */
+ *  "CustomChannels" -> "/customChannels"). The default binding names the enabled streaming service.
+ *  "" when the binding names no source (the default binding while no streaming service is enabled). */
 std::string audio_source_leaf_path(const std::string &binding);
+
+/** True when @p binding is the default binding or names a streaming service (what a streaming tile may be bound to). */
+bool audio_source_is_streaming_binding(const std::string &binding);
 
 /** The streaming services (not Bluetooth), in table order. The pointers stay valid. */
 std::vector<const AudioSource *> audio_source_streaming_sources();

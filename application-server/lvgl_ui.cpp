@@ -23,6 +23,8 @@
 #endif
 
 #include "ui/components/header.h"
+#include "ui/components/audio_source.h"
+#include "ui/components/audio_sources_page.h"
 #include "ui/components/info_list.h"
 #include "ui/components/level_gauge.h"
 #include "ui/components/picker_wheel.h"
@@ -104,6 +106,15 @@ static std::string bluetoothText()
   return Bluetooth::parseDevice(device, name, mac) ? name : device;
 }
 
+// Name of the enabled streaming service, "-" when none is.
+static std::string streamingText()
+{
+  for (const AudioSource *s : audio_source_streaming_sources())
+    if (tile_read_bool(s->path, "enable"))
+      return s->name;
+  return "-";
+}
+
 // Current value shown on the right of a Settings row.
 static std::string settingsRowValue(int row)
 {
@@ -111,6 +122,7 @@ static std::string settingsRowValue(int row)
   {
   case SETTINGS_ROW_BRIGHTNESS: return brightnessText();
   case SETTINGS_ROW_BLUETOOTH:  return bluetoothText();
+  case SETTINGS_ROW_STREAMING:  return streamingText();
   }
   return std::string();
 }
@@ -503,6 +515,7 @@ static void settingsRowActivatedCb(int index, void *)
   {
   case SETTINGS_ROW_BRIGHTNESS: openBrightnessPage(); break;
   case SETTINGS_ROW_BLUETOOTH:  tile_bluetooth_devices_open(SETTINGS_ROW_NAMES[SETTINGS_ROW_BLUETOOTH]); break;
+  case SETTINGS_ROW_STREAMING:  audio_sources_streaming_page_open(); break;
   case SETTINGS_ROW_NETWORK:    openNetworkPage();    break;
   case SETTINGS_ROW_APPEARANCE: openAppearancePage(); break;
   case SETTINGS_ROW_ADVANCED:   openAdvancedPage();   break;
@@ -851,6 +864,15 @@ static void scheduleLvglTick(std::shared_ptr<boost::asio::steady_timer> timer,
     if (!editedByUi)
       nav_close_pages(false);   // an open page may belong to a tile that no longer exists
     scroll_pane_refresh(homePane);
+  }
+  // Tiles bound to the default service follow the enabled streaming service: rebuild them when it changes.
+  static std::string defaultLeaf = audio_source_leaf_path(AUDIO_SOURCE_DEFAULT_BINDING);
+  const std::string currentDefaultLeaf = audio_source_leaf_path(AUDIO_SOURCE_DEFAULT_BINDING);
+  if (currentDefaultLeaf != defaultLeaf)
+  {
+    defaultLeaf = currentDefaultLeaf;
+    if (homePane && !screensChanged)
+      scroll_pane_refresh(homePane);
   }
   if (homePane && homeHeader)
   {

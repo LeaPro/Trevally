@@ -83,7 +83,8 @@ void tile_bluetooth_volume_open(const std::string &name, const std::string &bind
 void tile_streaming_volume_open(const std::string &name, const std::string &binding,
                                 const std::string &tileId);
 
-/** Opens the Paired devices page directly (e.g. from the Settings Bluetooth row), titled @p title. */
+/** Opens the Paired devices page directly (e.g. from the Settings Bluetooth row), titled @p title.
+ */
 void tile_bluetooth_devices_open(const std::string &title);
 
 /* Live values: a tile or page that follows an element at runtime binds its widgets to it.

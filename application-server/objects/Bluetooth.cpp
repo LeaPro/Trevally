@@ -11,6 +11,7 @@ static constexpr std::chrono::seconds PAIRABLE_RETRY_INTERVAL{1};    // minimum 
 static constexpr std::chrono::seconds SCAN_START_GRACE{3};           // how long BlueZ gets to report that a requested scan runs
 static constexpr std::chrono::seconds STATUS_HOLD{2};                // grace period after a play/pause command before mirroring the phone's state again
 static constexpr std::chrono::seconds RESET_TIMEOUT{5};              // how long a reset waits for BlueZ to remove the paired devices
+static constexpr std::chrono::seconds SERVICE_TIMEOUT{10};           // how long a start/stop of the bluetooth service gets before serviceRunning follows reality again
 static constexpr std::chrono::milliseconds PAIRING_CODE_POLL_INTERVAL{250};
 static const char *const PAIRING_CODE_FILE = "/run/trevally-bt-passkey"; // written by trevally-bt-agent during numeric comparison
 static constexpr size_t MAC_LENGTH = 17;                             // length of "AA:BB:CC:DD:EE:FF"
@@ -146,6 +147,9 @@ Bluetooth::Bluetooth(std::string path, Object *parent) : LeafObject(path, parent
 {
   string name;
   name = "reset"; elements[name] = resetPtr = std::make_shared<BoolControl>(path + "/" + name, this,  false/*default*/);
+  // false: stop the bluetooth service (and the pairing agent), e.g. to recover from a bad state; true: start it again. Follows the actual state of the
+  // service, so it reads false while the service is stopped and true while it runs, however that came about. Pairings are kept. Not persisted.
+  name = "serviceRunning"; elements[name] = serviceRunningPtr = std::make_shared<BoolControl>(path + "/" + name, this, true/*default*/, false/*persist*/);
   // true: scan for nearby devices until set to false (discoveredDevices follows while it is on); false: stop scanning.
   // Reads false again if the scan ends by itself (e.g. bluetooth restarted). Not persisted: scanning is always off at startup.
   name = "scan"; elements[name] = scanPtr = std::make_shared<BoolControl>(path + "/" + name, this, false/*default*/, false/*persist*/);
@@ -321,6 +325,58 @@ void Bluetooth::handleReset()
 #else
   system("systemctl restart bluetooth trevally-bt-agent");
 #endif
+}
+
+// serviceRunning is the request to start/stop the bluetooth service and follows whether org.bluez is on the bus. The commands don't wait for
+// systemd (--no-block); the service's appearing on / vanishing from the bus (see busMain) reports the outcome.
+void Bluetooth::syncService(std::chrono::steady_clock::time_point now)
+{
+  const int state = bluezRunning_;
+  if (state < 0)
+    return; // the bus watch has not reported yet
+  const bool running = state == 1;
+  if (!serviceInitialised)
+  {
+    // elements start out flagged as modified: take over the actual state instead of acting on the default
+    serviceInitialised = true;
+    serviceRunningPtr->isModified();
+    serviceRunningPtr->set(running);
+    serviceRunningPtr->isModified();
+    return;
+  }
+  if (serviceRunningPtr->isModified()) // clears the flag
+  {
+    const bool requested = serviceRunningPtr->get();
+    if (requested != running)
+    {
+#ifdef __ARM_ARCH
+      system(requested ? "systemctl --no-block start bluetooth trevally-bt-agent" : "systemctl --no-block stop trevally-bt-agent bluetooth");
+#else
+      system(requested ? "systemctl --no-block start bluetooth" : "systemctl --no-block stop bluetooth");
+#endif
+      servicePending = true;
+      servicePendingValue = requested;
+      serviceHoldUntil = now + SERVICE_TIMEOUT;
+    }
+  }
+  if (servicePending)
+  {
+    if (running != servicePendingValue && now < serviceHoldUntil)
+      return; // the service has not reached the requested state yet
+#ifdef __ARM_ARCH
+    // BlueALSA registered its A2DP endpoints with the BlueZ instance that was stopped; restart it so it registers with the new one.
+    // bluealsa-aplay (the playback to the audio output) is PartOf=bluetooth.service, so stopping BlueZ stopped it and starting BlueZ does not bring it back.
+    if (running && servicePendingValue)
+      system("systemctl --no-block restart bluealsa bluealsa-aplay");
+#endif
+    servicePending = false;
+  }
+  if (serviceRunningPtr->get() != running)
+  {
+    // the service started/stopped by itself, or the request failed: follow it without echoing it back
+    serviceRunningPtr->set(running);
+    serviceRunningPtr->isModified();
+  }
 }
 
 void Bluetooth::updateDeviceLists()
@@ -528,6 +584,7 @@ void Bluetooth::update(bool sensorsOnly, bool refreshVolatileElements)
   handleRequestConnect(now);
   handleDisconnect();
   handleReset();
+  syncService(now);
   updateDeviceLists();
 }
 
@@ -596,8 +653,17 @@ void Bluetooth::busMain()
   // (re)load the objects whenever the services appear (also covers them starting after us or being restarted)
   const guint bluezWatch = g_bus_watch_name_on_connection(
       conn_, BLUEZ, G_BUS_NAME_WATCHER_FLAGS_NONE,
-      [](GDBusConnection *, const gchar *, const gchar *, gpointer self) { static_cast<Bluetooth *>(self)->loadManagedObjects(BLUEZ, "/"); },
-      [](GDBusConnection *, const gchar *, gpointer self) { static_cast<Bluetooth *>(self)->clearBluez(); }, this, nullptr);
+      [](GDBusConnection *, const gchar *, const gchar *, gpointer self)
+      {
+        static_cast<Bluetooth *>(self)->bluezRunning_ = 1;
+        static_cast<Bluetooth *>(self)->loadManagedObjects(BLUEZ, "/");
+      },
+      [](GDBusConnection *, const gchar *, gpointer self)
+      {
+        static_cast<Bluetooth *>(self)->bluezRunning_ = 0;
+        static_cast<Bluetooth *>(self)->clearBluez();
+      },
+      this, nullptr);
   const guint blueAlsaWatch = g_bus_watch_name_on_connection(
       conn_, BLUEALSA, G_BUS_NAME_WATCHER_FLAGS_NONE,
       [](GDBusConnection *, const gchar *, const gchar *, gpointer self) { static_cast<Bluetooth *>(self)->loadManagedObjects(BLUEALSA, "/org/bluealsa"); },
