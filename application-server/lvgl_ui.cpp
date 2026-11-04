@@ -47,6 +47,7 @@
 #include <Themes.h>
 #include <Screens.h>
 #include <Tiles.h>
+#include <Weather.h>
 
 // Global simulator settings, defined in driver_backends.c. Must be populated
 // (window size, at minimum) before driver_backends_init_backend() is called,
@@ -269,6 +270,7 @@ struct Choice
 static std::shared_ptr<Appearance> appearanceLeaf;
 static std::shared_ptr<Themes> themesLeaf;
 static std::shared_ptr<Misc> miscLeaf;
+static std::shared_ptr<Weather> weatherLeaf;
 static std::vector<Choice> appearanceChoices[APPEARANCE_ROW_COUNT];   // only while the page is open
 static lv_obj_t *appearanceList;                                     // only while the page is open
 
@@ -865,6 +867,13 @@ static void scheduleLvglTick(std::shared_ptr<boost::asio::steady_timer> timer,
       nav_close_pages(false);   // an open page may belong to a tile that no longer exists
     scroll_pane_refresh(homePane);
   }
+  // Weather tiles read their conditions when they are built: rebuild them when the conditions change (a fresh
+  // lookup, or the temperature units). Open pages are not affected.
+  const bool weatherChanged = weatherLeaf && weatherLeaf->isModified({weatherLeaf->configPtr});
+  if (weatherChanged && homePane && !screensChanged)
+  {
+    scroll_pane_refresh(homePane);
+  }
   // Tiles bound to the default service follow the enabled streaming service: rebuild them when it changes.
   static std::string defaultLeaf = audio_source_leaf_path(AUDIO_SOURCE_DEFAULT_BINDING);
   const std::string currentDefaultLeaf = audio_source_leaf_path(AUDIO_SOURCE_DEFAULT_BINDING);
@@ -1009,6 +1018,7 @@ void lvglUiInit(boost::asio::io_context &io_context, std::shared_ptr<RootObject>
   appearanceLeaf = appearance;
   themesLeaf = themes;
   miscLeaf = std::dynamic_pointer_cast<Misc>(root->leafFromPath("/misc"));
+  weatherLeaf = std::dynamic_pointer_cast<Weather>(root->leafFromPath("/weather"));
   deviceInfoLeaf = std::dynamic_pointer_cast<DeviceInfo>(root->leafFromPath("/deviceInfo"));
   ui_design_tokens_init(appearance, themes);
 

@@ -24,6 +24,7 @@
 #define TILE_H
 
 #include "lvgl/lvgl.h"
+#include "../ui_design_tokens.h"
 #include <functional>
 #include <string>
 
@@ -76,6 +77,19 @@ void tile_bluetooth_build    (lv_obj_t *root, const std::string &name, const std
 void tile_streaming_build    (lv_obj_t *root, const std::string &name, const std::string &binding, int w, int h);
 void tile_weather_build      (lv_obj_t *root, const std::string &name, const std::string &binding, int w, int h);
 void tile_macro_build        (lv_obj_t *root, const std::string &name, const std::string &binding, int w, int h);
+
+/** The icon for the conditions in /weather config[binding] ("default" = the default postal code). */
+ui_icon_type_t tile_weather_icon(const std::string &binding);
+
+/** A weather icon whose artwork fills @p size px (the icons are drawn to fill their 74px canvas evenly). */
+lv_obj_t *tile_weather_icon_create(lv_obj_t *parent, ui_icon_type_t type, int size);
+
+/** The temperature in /weather config[binding] as text ("73"), in the units /appearance dictates; "" until known. */
+std::string tile_weather_degrees(const std::string &binding);
+
+/** @p degrees (from tile_weather_degrees()) with the degree sign, as used on the weather tiles. */
+lv_obj_t *tile_weather_degrees_create(lv_obj_t *parent, const std::string &degrees, const lv_font_t *font,
+                                      lv_style_t *style);
 
 /* Pages: a tile type may open its own page (see nav.h) when tapped. Types with a
  * page are made clickable by tile_create(). */

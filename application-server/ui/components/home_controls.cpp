@@ -15,6 +15,7 @@
 /* Geometry from the Figma home screens: 98px touch targets holding 74px icons. */
 #define CONTROL_W                CONTROL_BUTTON_W
 #define PORTRAIT_BUTTON_H        98
+#define WEATHER_ICON_PX          40
 #define PORTRAIT_BUTTON_Y        164    /* centre at 50% + 17 of the 391px panel */
 #define LANDSCAPE_BUTTON_H       78
 #define LANDSCAPE_BUTTON_Y       72     /* right under the ribbon */
@@ -23,6 +24,8 @@
 struct HomeControls {
     lv_obj_t   *cast;
     lv_obj_t   *weather;
+    ui_icon_type_t weatherIcon;                   /* what the weather area shows now */
+    std::string    weatherDegrees;
     lv_obj_t   *row;                              /* the active source's controls */
     std::vector<const AudioControl *> shown;      /* what the row holds now */
     lv_timer_t *timer;
@@ -58,6 +61,24 @@ static void rebuild_row(HomeControls *c, std::vector<const AudioControl *> contr
     c->shown = std::move(controls);
 }
 
+/* Rebuilds the weather area: the temperature (once known) to the left of the icon. */
+static void weather_area_fill(HomeControls *c, ui_icon_type_t icon, const std::string &degrees)
+{
+    lv_obj_clean(c->weather);
+    if (!degrees.empty()) {
+        lv_obj_t *temp = tile_weather_degrees_create(c->weather, degrees, &satoshi_medium_20,
+                                                     ui_theme_get_style_text_primary());
+        /* the icon's slot has empty margins: tuck the temperature to 8px from the icon without moving the layout */
+        if (temp) lv_obj_set_style_translate_x(temp, (CONTROL_W - WEATHER_ICON_PX) / 2 - 8, 0);
+    }
+    lv_obj_t *slot = tile_container(c->weather);
+    lv_obj_set_size(slot, CONTROL_W, PORTRAIT_BUTTON_H);
+    lv_obj_t *glyph = tile_weather_icon_create(slot, icon, WEATHER_ICON_PX);
+    lv_obj_align(glyph, LV_ALIGN_CENTER, 0, 0);
+    c->weatherIcon    = icon;
+    c->weatherDegrees = degrees;
+}
+
 static void refresh(lv_timer_t *timer)
 {
     HomeControls *c = (HomeControls *)lv_timer_get_user_data(timer);
@@ -66,6 +87,12 @@ static void refresh(lv_timer_t *timer)
     set_shown(c->cast,    source == nullptr);
     set_shown(c->weather, source == nullptr);
     set_shown(c->row,     source != nullptr);
+
+    /* The weather area shows the conditions at the default postal code. */
+    const ui_icon_type_t weatherIcon = tile_weather_icon("default");
+    const std::string    degrees     = tile_weather_degrees("default");
+    if (weatherIcon != c->weatherIcon || degrees != c->weatherDegrees)
+        weather_area_fill(c, weatherIcon, degrees);
 
     std::vector<const AudioControl *> controls;
     for (const AudioControl *control : audio_source_controls(source))
@@ -84,7 +111,13 @@ lv_obj_t *home_controls_create(lv_obj_t *parent, int w, int h)
     c->cast    = icon_area_create(area, 0,            0, PORTRAIT_BUTTON_H, UI_ICON_MUSIC_CAST);
     lv_obj_add_flag(c->cast, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(c->cast, [](lv_event_t *) { audio_sources_page_open(); }, LV_EVENT_CLICKED, nullptr);
-    c->weather = icon_area_create(area, w - CONTROL_W, 0, PORTRAIT_BUTTON_H, UI_ICON_WEATHER);
+    c->weather = tile_container(area);
+    lv_obj_set_size(c->weather, LV_SIZE_CONTENT, PORTRAIT_BUTTON_H);
+    lv_obj_align(c->weather, LV_ALIGN_TOP_RIGHT, 0, 0);
+    lv_obj_set_layout(c->weather, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(c->weather, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(c->weather, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    weather_area_fill(c, tile_weather_icon("default"), tile_weather_degrees("default"));
 
     c->row = tile_container(area);
     lv_obj_set_size(c->row, w, landscape ? LANDSCAPE_BUTTON_H : PORTRAIT_BUTTON_H);

@@ -23,7 +23,7 @@ DeviceInfo::DeviceInfo(string path, Object *parent) : LeafObject(path, parent)
   name = "deviceName";           elements[name] = deviceNamePtr           = std::make_shared<StringControl>(path + "/" + name, this, "DeviceName"/*default*/, 64/*maxLength*/);
   name = "venueName";            elements[name] = venueNamePtr            = std::make_shared<StringControl>(path + "/" + name, this, "VenueName"/*default*/, 64/*maxLength*/);
   name = "location";             elements[name] = locationPtr             = std::make_shared<StringControl>(path + "/" + name, this, ""/*default*/, 64/*maxLength*/);
-  name = "defaultPostalCode";    elements[name] = defaultPostalCodePtr    = std::make_shared<StringControl>(path + "/" + name, this, ""/*default*/, 16/*maxLength*/);
+  name = "defaultPostalCode";    elements[name] = defaultPostalCodePtr    = std::make_shared<StringControl>(path + "/" + name, this, "46601"/*default: South Bend, IN*/, 16/*maxLength*/);
   name = "installerName";        elements[name] = installerNamePtr        = std::make_shared<StringControl>(path + "/" + name, this, "Installer Name"/*default*/, 64/*maxLength*/);
   name = "installerContactInfo"; elements[name] = installerContactInfoPtr = std::make_shared<StringControl>(path + "/" + name, this, "Installer Contact Info"/*default*/, 256/*maxLength*/);
   name = "numInputs";            elements[name] = numInputsPtr            = std::make_shared<FloatSensor>(path + "/" + name, this, 2.0f/*min*/,  8.0f/*max*/, 2.0f/*default*/,   2.0f/*multipleOf*/,  ""/*units*/, true/*publishAsControlFlag*/);

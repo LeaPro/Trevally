@@ -9,7 +9,6 @@ LV_IMG_DECLARE(skip_next);
 LV_IMG_DECLARE(skip_previous);
 LV_IMG_DECLARE(repeat);
 LV_IMG_DECLARE(sleep);
-LV_IMG_DECLARE(weather);
 LV_IMG_DECLARE(music_cast);
 LV_IMG_DECLARE(add);
 LV_IMG_DECLARE(arrow_back);
@@ -25,6 +24,15 @@ LV_IMG_DECLARE(lea_logo);
 LV_IMG_DECLARE(equalizer1);
 LV_IMG_DECLARE(equalizer2);
 LV_IMG_DECLARE(equalizer3);
+LV_IMG_DECLARE(weather_partly_cloudy_day);
+LV_IMG_DECLARE(weather_sunny);
+LV_IMG_DECLARE(weather_clear_night);
+LV_IMG_DECLARE(weather_partly_cloudy_night);
+LV_IMG_DECLARE(weather_cloudy);
+LV_IMG_DECLARE(weather_fog);
+LV_IMG_DECLARE(weather_rain);
+LV_IMG_DECLARE(weather_thunderstorm);
+LV_IMG_DECLARE(weather_snow);
 
 // Order must match ui_icon_type_t in ui_design_tokens.h exactly.
 const lv_image_dsc_t *const ui_icon_data[] = {
@@ -37,7 +45,6 @@ const lv_image_dsc_t *const ui_icon_data[] = {
     &skip_previous,
     &repeat,
     &sleep,
-    &weather,
     &music_cast,
     &add,
     &arrow_back,
@@ -53,4 +60,13 @@ const lv_image_dsc_t *const ui_icon_data[] = {
     &equalizer1,
     &equalizer2,
     &equalizer3,
+    &weather_partly_cloudy_day,
+    &weather_sunny,
+    &weather_clear_night,
+    &weather_partly_cloudy_night,
+    &weather_cloudy,
+    &weather_fog,
+    &weather_rain,
+    &weather_thunderstorm,
+    &weather_snow,
 };
