@@ -31,7 +31,6 @@
 #include "ui/components/qr_code.h"
 #include "ui/components/scroll_pane.h"
 #include "ui/components/now_playing_ribbon.h"
-#include "ui/components/home_footer.h"
 #include "ui/components/home_controls.h"
 #include "ui/components/playback_page.h"
 #include "ui/components/setup_page.h"
@@ -599,7 +598,6 @@ static lv_obj_t *homePane;
 static lv_obj_t *homeHeader;
 static lv_obj_t *homeRibbon;
 static lv_obj_t *homeControls;
-static lv_obj_t *homeFooter;
 
 // Playback destination: reached by tapping the album art on the home ribbon; its back button returns home.
 static nav_dest_t playbackDest;
@@ -659,12 +657,13 @@ static void buildHome()
 
   // Now-playing ribbon: portrait, the strip under the pane across the display; landscape, the top of the
   // panel right of the pane. It hides itself while no audio source is enabled; the control icons share that
-  // panel (home_controls.h).
+  // panel (home_controls.h), which runs from the ribbon's top to the bottom of the display; its bottom holds
+  // the footer: date and time, LEA logo and sleep icon.
   const int displayW = lv_display_get_horizontal_resolution(lv_obj_get_display(homeScreen));
   const int displayH = lv_display_get_vertical_resolution(lv_obj_get_display(homeScreen));
   if (ui_is_landscape())
   {
-    homeControls = home_controls_create(homeScreen, displayW - ui_content_w(), displayH - HOME_FOOTER_H_PX);
+    homeControls = home_controls_create(homeScreen, displayW - ui_content_w(), displayH);
     lv_obj_align(homeControls, LV_ALIGN_TOP_LEFT, ui_content_w(), 0);
     homeRibbon = now_playing_ribbon_create(homeScreen, displayW - ui_content_w(), ribbonArtTapCb);
     lv_obj_align(homeRibbon, LV_ALIGN_TOP_LEFT, ui_content_w(), 0);
@@ -672,22 +671,10 @@ static void buildHome()
   else
   {
     const int panelTop = UI_HEADER_H_PX + ui_pane_h();
-    homeControls = home_controls_create(homeScreen, displayW, displayH - HOME_FOOTER_H_PX - panelTop);
+    homeControls = home_controls_create(homeScreen, displayW, displayH - panelTop);
     lv_obj_align(homeControls, LV_ALIGN_TOP_LEFT, 0, panelTop);
     homeRibbon = now_playing_ribbon_create(homeScreen, displayW, ribbonArtTapCb);
     lv_obj_align(homeRibbon, LV_ALIGN_TOP_LEFT, 0, UI_HEADER_H_PX + ui_pane_h());
-  }
-
-  // Footer: date and time, LEA logo and sleep icon, along the bottom of the same panel.
-  if (ui_is_landscape())
-  {
-    homeFooter = home_footer_create(homeScreen, displayW - ui_content_w(), 22);
-    lv_obj_align(homeFooter, LV_ALIGN_TOP_LEFT, ui_content_w(), displayH - HOME_FOOTER_H_PX);
-  }
-  else
-  {
-    homeFooter = home_footer_create(homeScreen, displayW, 6);
-    lv_obj_align(homeFooter, LV_ALIGN_TOP_LEFT, 0, displayH - HOME_FOOTER_H_PX);
   }
 }
 
@@ -806,12 +793,10 @@ static void rebuildForOrientation()
   lv_obj_delete(homeHeader);
   lv_obj_delete(homeRibbon);
   lv_obj_delete(homeControls);
-  lv_obj_delete(homeFooter);
   homePane = nullptr;
   homeHeader = nullptr;
   homeRibbon = nullptr;
   homeControls = nullptr;
-  homeFooter = nullptr;
 
   applyOrientation();
   buildHome();

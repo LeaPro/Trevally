@@ -10,7 +10,14 @@
 #include "tile.h"
 #include "../ui_design_tokens.h"
 
+#include <string>
 #include <vector>
+
+#include <object.h>
+#include <DateTime.h>
+
+/* The device's root object (defined in main.cpp). */
+extern std::shared_ptr<RootObject> root;
 
 /* Geometry from the Figma home screens: 98px touch targets holding 74px icons. */
 #define CONTROL_W                CONTROL_BUTTON_W
@@ -21,6 +28,15 @@
 #define LANDSCAPE_BUTTON_Y       72     /* right under the ribbon */
 #define HOME_CONTROLS_POLL_MS    200
 
+/* The footer strip along the bottom of the panel. */
+#define FOOTER_H                 98
+#define DATE_X                   30
+#define DATE_Y                   27
+#define LOGO_W                   78
+#define LOGO_H                   24
+#define PORTRAIT_LOGO_BOTTOM     6      /* gap between the logo and the bottom edge */
+#define LANDSCAPE_LOGO_BOTTOM    22
+
 struct HomeControls {
     lv_obj_t   *cast;
     lv_obj_t   *weather;
@@ -28,6 +44,8 @@ struct HomeControls {
     std::string    weatherDegrees;
     lv_obj_t   *row;                              /* the active source's controls */
     std::vector<const AudioControl *> shown;      /* what the row holds now */
+    lv_obj_t   *dateTime;                         /* footer: time and date */
+    std::string dateTimeShown;
     lv_timer_t *timer;
 };
 
@@ -98,6 +116,15 @@ static void refresh(lv_timer_t *timer)
     for (const AudioControl *control : audio_source_controls(source))
         if (control->onHome) controls.push_back(control);
     if (controls != c->shown) rebuild_row(c, std::move(controls));
+
+    auto dt = std::dynamic_pointer_cast<DateTime>(::root->leafFromPath("/dateTime"));
+    if (dt) {
+        std::string text = dt->displayTimePtr->get() + "\n" + dt->displayDatePtr->get();
+        if (text != c->dateTimeShown) {
+            c->dateTimeShown = text;
+            lv_label_set_text(c->dateTime, text.c_str());
+        }
+    }
 }
 
 lv_obj_t *home_controls_create(lv_obj_t *parent, int w, int h)
@@ -123,6 +150,19 @@ lv_obj_t *home_controls_create(lv_obj_t *parent, int w, int h)
     lv_obj_set_size(c->row, w, landscape ? LANDSCAPE_BUTTON_H : PORTRAIT_BUTTON_H);
     lv_obj_set_pos(c->row, 0, landscape ? LANDSCAPE_BUTTON_Y : PORTRAIT_BUTTON_Y);
     lv_obj_set_flex_flow(c->row, LV_FLEX_FLOW_ROW);
+
+    const int footerY = h - FOOTER_H;
+    c->dateTime = lv_label_create(area);
+    lv_obj_add_style(c->dateTime, ui_theme_get_style_text_secondary(), 0);
+    lv_obj_set_style_text_font(c->dateTime, &satoshi_medium_20, 0);
+    lv_obj_set_pos(c->dateTime, DATE_X, footerY + DATE_Y);
+
+    lv_obj_t *logo = UI_ICON_CREATE_DEFAULT(area, UI_ICON_LOGO);
+    if (logo) lv_obj_set_pos(logo, (w - LOGO_W) / 2,
+                             h - (landscape ? LANDSCAPE_LOGO_BOTTOM : PORTRAIT_LOGO_BOTTOM) - LOGO_H);
+
+    lv_obj_t *sleep = UI_ICON_CREATE_DEFAULT(area, UI_ICON_SLEEP);
+    if (sleep) lv_obj_align(sleep, LV_ALIGN_TOP_RIGHT, -(FOOTER_H - 74) / 2, footerY + (FOOTER_H - 74) / 2);
 
     c->timer = lv_timer_create(refresh, HOME_CONTROLS_POLL_MS, c);
     lv_obj_add_event_cb(area, [](lv_event_t *e) {
