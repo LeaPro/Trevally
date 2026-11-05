@@ -13,9 +13,41 @@ public:
   void factoryReset();
   void reboot();
 
+  enum class FwUpdateStatesType {None,
+                                 Downloading,
+                                 DownloadingFail,
+                                 Decrypting,
+                                 DecryptingFail,
+                                 Extraction,
+                                 ExtractionFail,
+                                 HwNotSupportedInFw,
+                                 ExtractionComplete,
+                                 FactoryReset,
+                                 SoftwareReboot,
+                                 FinishedFlash,
+                                 Finished,
+                                 Max=Finished};
+  static inline std::map<int, const char *> fwUpdateStatesTypeMap {
+    {(int)FwUpdateStatesType::None, "None"},
+    {(int)FwUpdateStatesType::Downloading, "Downloading"},
+    {(int)FwUpdateStatesType::DownloadingFail, "DownloadingFail"},
+    {(int)FwUpdateStatesType::Decrypting, "Decrypting"},
+    {(int)FwUpdateStatesType::DecryptingFail, "DecryptingFail"},
+    {(int)FwUpdateStatesType::Extraction, "Extraction"},
+    {(int)FwUpdateStatesType::ExtractionFail, "ExtractionFail"},
+    {(int)FwUpdateStatesType::HwNotSupportedInFw, "HwNotSupportedInFw"},
+    {(int)FwUpdateStatesType::ExtractionComplete, "ExtractionComplete"},
+    {(int)FwUpdateStatesType::FactoryReset, "FactoryReset"},
+    {(int)FwUpdateStatesType::SoftwareReboot, "SoftwareReboot"},
+    {(int)FwUpdateStatesType::FinishedFlash, "FinishedFlash"},
+    {(int)FwUpdateStatesType::Finished, "Finished"}
+  };
+
   std::shared_ptr<BoolControl> rebootPtr;
   std::shared_ptr<BoolControl> factoryResetPtr;
-  std::shared_ptr<StringSensor> fwUpdateStatusPtr;
+  std::shared_ptr<EnumSensor> fwUpdateStatusPtr;
+  std::shared_ptr<FloatSensor> fwDownloadProgressPtr;
+  std::shared_ptr<BoolControl> fwUpdateInProgressPtr;
   std::shared_ptr<BoolControl> ledTestPtr;
   std::shared_ptr<BoolControl> setupModePtr;
 

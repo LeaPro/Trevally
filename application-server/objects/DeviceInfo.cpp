@@ -30,7 +30,7 @@ DeviceInfo::DeviceInfo(string path, Object *parent) : LeafObject(path, parent)
   name = "numOutputs";           elements[name] = numOutputsPtr           = std::make_shared<FloatSensor>(path + "/" + name, this, 2.0f/*min*/,  8.0f/*max*/, 2.0f/*default*/,   2.0f/*multipleOf*/,  ""/*units*/, true/*publishAsControlFlag*/);
   name = "modelID";              elements[name] = modelIdPtr              = std::make_shared<StringSensor>(path + "/" + name, this, "CS Glass Dante"/*default*/, 32/*maxLength*/);
   name = "family";               elements[name] = familyPtr               = std::make_shared<StringSensor>(path + "/" + name, this, "TV"/*default*/, 32/*maxLength*/, true/*publishAsControlFlag*/);
-  name = "serialNumber";         elements[name] = serialNumPtr            = std::make_shared<StringSensor>(path + "/" + name, this, "123"/*default*/, 32/*maxLength*/, true/*publishAsControlFlag*/);
+  name = "serialNumber";         elements[name] = serialNumPtr            = std::make_shared<StringSensor>(path + "/" + name, this, "1234"/*default*/, 32/*maxLength*/, true/*publishAsControlFlag*/);
   name = "dateOfMfg";            elements[name] = dateOfMfgPtr            = std::make_shared<StringSensor>(path + "/" + name, this, ""/*default*/, 32/*maxLength*/, true/*publishAsControlFlag*/);
   name = "dateOfInstallation";   elements[name] = dateOfInstallationPtr   = std::make_shared<StringControl>(path + "/" + name, this, ""/*default*/, 32/*maxLength*/);
   name = "hardwareID";           elements[name] = hardwareIDPtr           = std::make_shared<StringSensor>(path + "/" + name, this, ""/*default*/, 64/*maxLength*/, true/*publishAsControlFlag*/);
@@ -40,8 +40,8 @@ DeviceInfo::DeviceInfo(string path, Object *parent) : LeafObject(path, parent)
   name = "mfgTestModeControl";   elements[name] = mfgTestModeControlPtr   = std::make_shared<BoolControl>(path + "/" + name, this,  false/*default*/, false/*persistent*/);
   name = "mfgTestMode";          elements[name] = mfgTestModePtr          = std::make_shared<BoolSensor>(path + "/" + name, this, false/*default*/);
   name = "assetTagNumber";       elements[name] = assetTagNumberPtr       = std::make_shared<StringControl>(path + "/" + name, this, "Asset Tag ID"/*default*/, 64/*maxLength*/);
-  name = "firmwareVersion";      elements[name] = arcFwVerPtr             = std::make_shared<StringSensor>(path + "/" + name, this, "0.0.0.0"/*default*/, 32/*maxLength*/);
-  name = "RC";                   elements[name] = arcFwVerRcPtr           = std::make_shared<StringSensor>(path + "/" + name, this, ""/*default*/, 8/*maxLength*/);
+  name = "firmwareVersion";      elements[name] = fwVerPtr             = std::make_shared<StringSensor>(path + "/" + name, this, "0.0.0.0"/*default*/, 32/*maxLength*/);
+  name = "RC";                   elements[name] = fwVerRcPtr           = std::make_shared<StringSensor>(path + "/" + name, this, ""/*default*/, 8/*maxLength*/);
   name = "upTime";                     elements[name] = upTimePtr         = std::make_shared<StringSensor>(path + "/" + name, this, ""/*default*/, 64/*maxLength*/, true/*publishAsControlFlag*/);
   name = "mfgTest";                    elements[name] = mfgTestPtr        = std::make_shared<StringSensor>(path + "/" + name, this, ""/*default*/, 8/*maxLength*/, true/*publishAsControlFlag*/);
   name = "mftResult";                  elements[name] = mftResultPtr      = std::make_shared<StringSensor>(path + "/" + name, this, ""/*default*/, 8/*maxLength*/, true/*publishAsControlFlag*/);

@@ -13,10 +13,11 @@ The only available operation on uploaded files is 'delete'.
 
 ## Upload flow
 
-To upload a file, a multipart http form data upload (POST) is sent to a CGI endpoint.
+To upload a file, a multipart http form data upload (POST) is sent to a CGI endpoint
+(/http-multipart-form-data-upload.cgi).
 
 Form fields:
-- filename: uploaded file content
+- file: uploaded file content
 - category: upload target category
 - metadata_json: optional JSON metadata text
 
@@ -36,7 +37,7 @@ How this interacts with Files API:
 - Files watches only audio-files, image-files, and misc-files
 - Files does not watch firmware-update (/var/tmp/sftp)
 - New, replaced, and deleted files in watched directories are detected via inotify and reflected in directory
-- The current file entry metadata field is always an empty object; sidecar metadata files are not parsed into metadata yet (TBD - could be supplied only be client, or could contain data calculated on target system, e.g. audio file duration)
+- The file entry metadata field contains the parsed contents of the file's sidecar metadata file (empty object if there is none); sidecar files themselves are not listed as entries
 
 ## Download access
 
@@ -64,27 +65,39 @@ It publishes an object with this top-level shape:
     }
 
 Each file entry is keyed by filename and contains:
-- size: human-readable decimal units (B, KB, MB, GB, TB)
+- size: integer byte count
 - timestamp: UTC ISO-8601 string (example: 2026-08-04T14:24:10Z)
-- metadata: currently an empty object 
+- metadata: contents of the sidecar metadata file, e.g. {"fileName": "cover.jpg"} (empty object if none)
 
 Example file entry:
 
     "cover.jpg": {
-      "size": "845 KB",
+      "size": 845000,
       "timestamp": "2026-08-04T14:24:10Z",
       "metadata": {}
     }
 
 ## Custom method: delete
 
-File deletion is implemented as a custom method on the Files object itself (not as an element).
+File deletion is implemented as a custom method on the Files object (/files) and is listed by
+"info". The file's sidecar metadata file is deleted with it. Like file upload, delete does not
+require authentication.
 
-Supported request payloads:
-- A string path, for example: audio-files/tune.mp3
+Example request:
+
+    {"id":110,"url":"/files","method":"delete","params":{"path":"image-files/7bab41fde4da4625afffb5f29bd4e04e"}}
+
+Params:
+- path: "<directory>/<file>", for example audio-files/tune.mp3
+
+Temporary: until the WebUI is updated, the form it currently sends is also accepted:
+
+    {"url":"/files/directory","method":"delete","params":"image-files/<id>"}
+
+This is marked TEMPORARY(webui-delete) in the code and will be removed.
 
 Return value:
-- true on success
+- "OK" on success
 - error/exception on failure
 
 ## Delete path validation rules

@@ -20,7 +20,9 @@ Misc::Misc(string path, Object *parent) : LeafObject(path, parent)
   string name;
   name = "reboot"; elements[name] = rebootPtr = std::make_shared<BoolControl>(path + "/" + name, this, false/*default*/, false/*persistent*/);
   name = "factoryReset"; elements[name] = factoryResetPtr = std::make_shared<BoolControl>(path + "/" + name, this, false/*default*/, false/*persistent*/);
-  name = "fwUpdateStatus"; elements[name] = fwUpdateStatusPtr = std::make_shared<StringSensor>(path + "/" + name, this, "None"/*default*/, 64/*maxLength*/);
+  name = "fwUpdateStatus"; elements[name] = fwUpdateStatusPtr = std::make_shared<EnumSensor>(path + "/" + name, this, 0, (int)Misc::FwUpdateStatesType::Max/*max*/, (int)Misc::FwUpdateStatesType::None/*default*/, Misc::fwUpdateStatesTypeMap, true/*publishAsControlFlag*/);
+  name = "fwDownloadProgress"; elements[name] = fwDownloadProgressPtr = std::make_shared<FloatSensor>(path + "/" + name, this, 0.0f/*min*/, 100.0f/*max*/, 0.0f/*default*/, 1.0f/*multipleOf*/, "%"/*units*/, true/*publishAsControlFlag*/);
+  name = "fwUpdateInProgress"; elements[name] = fwUpdateInProgressPtr = std::make_shared<BoolControl>(path + "/" + name, this, false/*default*/, true/*persistent*/);
   name = "ledTest"; elements[name] = ledTestPtr = std::make_shared<BoolControl>(path + "/" + name, this, false/*default*/, false/*persistent*/);
   name = "setupMode"; elements[name] = setupModePtr = std::make_shared<BoolControl>(path + "/" + name, this, true/*default*/, true/*persistent*/);
   class SubscriptionPeriodControl final : public FloatControl
@@ -115,6 +117,20 @@ Misc::Misc(string path, Object *parent) : LeafObject(path, parent)
 
 void Misc::initialize()
 {
+  // fwUpdateInProgress is persisted; if it survived a reboot the update completed
+  if (fwUpdateInProgressPtr->get())
+  {
+    fwUpdateStatusPtr->setEnumValue((int)FwUpdateStatesType::FinishedFlash);
+    fwUpdateInProgressPtr->set(false);
+    // write successful fw update message to log
+    auto logs = std::dynamic_pointer_cast<Logs>(getRoot()->leafFromPath("/logs"));
+    auto devInfo = std::dynamic_pointer_cast<DeviceInfo>(getRoot()->leafFromPath("/deviceInfo"));
+    if (logs)
+    {
+      string newFwVer = devInfo ? devInfo->fwVerPtr->get() : "";
+      logs->append("events", "Info", "Firmware Update to " + newFwVer + " was successful\n");
+    }
+  }
   LeafObject::initialize();
 }
 
@@ -197,6 +213,62 @@ void Misc::update(bool sensorsOnly, bool refreshVolatileElements)
       heldLongEnough = rightNow;
       buttonInit = true;
     }
+
+    // firmware update state machine; timeouts are measured from entry into the current state
+    static int lastState = -1;
+    static time_t stateStartTime = 0;
+    auto state = (FwUpdateStatesType)fwUpdateStatusPtr->getEnumValue();
+    if ((int)state != lastState)
+    {
+      lastState = (int)state;
+      stateStartTime = rightNow;
+    }
+    auto elapsed = rightNow - stateStartTime;
+    switch (state)
+    {
+      case FwUpdateStatesType::Extraction:
+        fwUpdateInProgressPtr->set(true);
+        break;
+      case FwUpdateStatesType::DownloadingFail:
+      case FwUpdateStatesType::DecryptingFail:
+      case FwUpdateStatesType::ExtractionFail: // received fw for other model
+        if (elapsed > 15)
+        {
+          fwUpdateInProgressPtr->set(false);
+          fwDownloadProgressPtr->set(0.0f);
+          fwUpdateStatusPtr->setEnumValue((int)FwUpdateStatesType::None);
+        }
+        break;
+      case FwUpdateStatesType::HwNotSupportedInFw:
+        if (elapsed > 30)
+        {
+          auto logs = std::dynamic_pointer_cast<Logs>(getRoot()->leafFromPath("/logs"));
+          if (logs)
+            logs->append("events", "Warning", "Firmware Update Failure - Hardware Not Supported in Firmware. Try a newer firmware version.\n");
+          fwUpdateInProgressPtr->set(false);
+          fwDownloadProgressPtr->set(0.0f);
+          fwUpdateStatusPtr->setEnumValue((int)FwUpdateStatesType::None);
+        }
+        break;
+      case FwUpdateStatesType::FinishedFlash:
+        if (elapsed > 60) // webUI and ATS require the FinishedFlash state
+          fwUpdateStatusPtr->setEnumValue((int)FwUpdateStatesType::Finished);
+        break;
+      case FwUpdateStatesType::Finished:
+        if (elapsed > 60) // reset fw update status after awhile
+        {
+          fwUpdateInProgressPtr->set(false);
+          fwDownloadProgressPtr->set(0.0f);
+          fwUpdateStatusPtr->setEnumValue((int)FwUpdateStatesType::None);
+        }
+        break;
+      case FwUpdateStatesType::None:
+        if (fwUpdateInProgressPtr->get())
+          fwUpdateStatusPtr->setEnumValue((int)FwUpdateStatesType::Finished);
+        break;
+      default:
+        break;
+    }
   }
   else // non-sensors
   {
@@ -238,6 +310,7 @@ void Misc::update(bool sensorsOnly, bool refreshVolatileElements)
 
 void Misc::reboot()
 {
+  fwUpdateStatusPtr->setEnumValue((int)FwUpdateStatesType::SoftwareReboot);
   printf("Reboot: rebooting (settings preserved)\n"); fflush(stdout);
   #ifdef __ARM_ARCH
   sync();
@@ -249,6 +322,7 @@ void Misc::reboot()
 
 void Misc::factoryReset()
 {
+  fwUpdateStatusPtr->setEnumValue((int)FwUpdateStatesType::FactoryReset);
   printf("Factory Reset: clearing persisted settings and rebooting\n"); fflush(stdout);
   getRoot()->kvs->Nuke();
   #ifdef __ARM_ARCH

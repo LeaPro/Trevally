@@ -34,8 +34,8 @@ public:
   std::shared_ptr<BoolControl> mfgTestModeControlPtr;
   std::shared_ptr<BoolSensor> mfgTestModePtr;
   std::shared_ptr<StringControl> assetTagNumberPtr;
-  std::shared_ptr<StringSensor> arcFwVerPtr;
-  std::shared_ptr<StringSensor> arcFwVerRcPtr;
+  std::shared_ptr<StringSensor> fwVerPtr;
+  std::shared_ptr<StringSensor> fwVerRcPtr;
   std::shared_ptr<StringSensor> upTimePtr;
   std::shared_ptr<StringSensor> mfgTestPtr;
   std::shared_ptr<StringSensor> mftResultPtr;

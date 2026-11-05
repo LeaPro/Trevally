@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cfloat>
 #include <ctime>
+#include <fstream>
 #include <iomanip>
 #include <sstream>
 #ifdef __ARM_ARCH
@@ -96,22 +97,6 @@ std::string toDirectoryName(const std::string &directoryPath)
 	return fs::path(directoryPath).filename().string();
 }
 
-std::string formatBytesHumanReadable(uintmax_t bytes)
-{
-	static const char *units[] = {"B", "KB", "MB", "GB", "TB"};
-	double value = static_cast<double>(bytes);
-	size_t unitIndex = 0;
-	while (value >= 1000.0 && unitIndex < (sizeof(units) / sizeof(units[0])) - 1)
-	{
-		value /= 1000.0;
-		unitIndex++;
-	}
-
-	std::ostringstream oss;
-	oss << std::fixed << std::setprecision(unitIndex == 0 ? 0 : 2) << value << " " << units[unitIndex];
-	return oss.str();
-}
-
 std::string formatUtcTimestamp(std::time_t t)
 {
 	std::tm tmUtc;
@@ -130,9 +115,20 @@ json buildFileJson(const fs::path &filePath)
 	const auto writeTime = fs::last_write_time(filePath, timeEc);
 
 	json fileObj = json::object();
-	fileObj["size"] = sizeEc ? "unknown" : formatBytesHumanReadable(bytes);
+	fileObj["size"] = sizeEc ? 0 : bytes;
 	fileObj["timestamp"] = timeEc ? "unknown" : formatUtcTimestamp(writeTime);
 	fileObj["metadata"] = json::object();
+
+	// metadata comes from the upload's sidecar file (e.g. {"fileName":"cover.jpg"}), if present
+	std::ifstream sidecar(filePath.string() + ".metadata.json");
+	if (sidecar)
+	{
+		json metadata = json::parse(sidecar, nullptr, false);
+		if (metadata.is_object())
+		{
+			fileObj["metadata"] = metadata;
+		}
+	}
 	return fileObj;
 }
 
@@ -162,12 +158,12 @@ void rebuildDirectoryStateEntry(const std::string &directoryPath, json &state)
 	  Build a JSON directory listing for one watched directory, e.g.:
 	  {
 	    "song.wav": {
-	      "size": "12.35 MB",
+	      "size": 12350000,
 	      "timestamp": "2026-08-04T14:23:51Z",
 	      "metadata": {}
 	    },
 	    "cover.jpg": {
-	      "size": "845 KB",
+	      "size": 845000,
 	      "timestamp": "2026-08-04T14:24:10Z",
 	      "metadata": {}
 	    }
@@ -178,7 +174,7 @@ void rebuildDirectoryStateEntry(const std::string &directoryPath, json &state)
 	{
 		const fs::path &p = it->path();
 		boost::system::error_code typeEc;
-		if (fs::is_regular_file(p, typeEc))
+		if (fs::is_regular_file(p, typeEc) && !isMetadataSidecarFileName(p.filename().c_str()))
 		{
 			directoryFiles[p.filename().string()] = buildFileJson(p);
 		}
@@ -263,16 +259,13 @@ public:
 				Watch *watch = findWatchByDescriptor(ev->wd);
 				if (watch != nullptr)
 				{
+					// sidecar writes also trigger a rescan, since the upload CGI writes the sidecar after the file
 					const bool hasName = ev->len > 0;
-					const bool isMetadataSidecar = hasName && isMetadataSidecarFileName(ev->name);
-					if (!isMetadataSidecar)
-					{
-						watch->changed = true;
-						printf("%s inotify event: %s (mask=0x%08x)\n",
-							watch->path.c_str(),
-							hasName ? ev->name : "(dir)",
-							ev->mask);
-					}
+					watch->changed = true;
+					printf("%s inotify event: %s (mask=0x%08x)\n",
+						watch->path.c_str(),
+						hasName ? ev->name : "(dir)",
+						ev->mask);
 				}
 
 				ptr += sizeof(struct inotify_event) + ev->len;
@@ -322,11 +315,39 @@ private:
 } // namespace
 #endif
 
+namespace {
+
+// TEMPORARY(webui-delete): the current WebUI sends
+//   {"url":"/files/directory","method":"delete","params":"image-files/<id>"}
+// instead of the documented
+//   {"url":"/files","method":"delete","params":{"path":"image-files/<id>"}}
+// This object makes /files/directory resolve to an object (leaf objects never visit their children,
+// so it is only reachable via url lookup) and converts the string params to the documented form.
+// Once the WebUI sends the documented form, remove everything tagged TEMPORARY(webui-delete),
+// in this file and in WebsocketAPI/WebsocketServer/LeaApiServer.cpp.
+class FilesDirectoryRoute final : public Object
+{
+public:
+	using Object::Object;
+	json processJson(const string &method, json &j, int client) override
+	{
+		if (method != "delete" || !j.is_string())
+		{
+			throw std::runtime_error("no object named directory");
+		}
+		json params = {{"path", j}};
+		return getParent()->processJson(method, params, client);
+	}
+};
+
+} // namespace
+
 Files::Files(string path, Object *parent) : LeafObject(path, parent)
 {
   string name;
   name = "directory"; elements[name] = directoryPtr = std::make_shared<JsonSensor>(path + "/" + name, this, json({}));
-
+  children[name] = std::make_shared<FilesDirectoryRoute>(path + "/" + name, this); // TEMPORARY(webui-delete)
+  methods.insert("delete"); // advertised via "info"
 }
 
 void Files::initialize()
@@ -339,11 +360,11 @@ json Files::processJson(const string &method, json &j, int client)
 {
 	if (method == "delete")
 	{
-		if (!j.is_string())
+		if (!j.is_object() || !j.contains("path") || !j["path"].is_string())
 		{
-			throw std::runtime_error("delete expects a string path");
+			throw std::runtime_error("delete expects {\"path\": \"<directory>/<file>\"}");
 		}
-		const string partialPath = j.get<string>();
+		const string partialPath = j["path"].get<string>();
 
 		string error;
 		if (!deleteWatchedFile(partialPath, error))
@@ -353,7 +374,7 @@ json Files::processJson(const string &method, json &j, int client)
 
 		// Refresh immediately so subscribers see deletion without waiting for polling cadence.
 		updateDirectory(false);
-		return true;
+		return json(); // empty result -> the library replies "OK", like set/add/update/remove
 	}
 
 	return LeafObject::processJson(method, j, client);
@@ -389,21 +410,21 @@ void Files::updateDirectory(bool bootstrap)
 	  {
 	    "audio-files": {
 	      "I Like to Rock.mp3": {
-	        "size": "2.35 MB",
+	        "size": 2350000,
 	        "timestamp": "2026-08-04T14:23:51Z",
 	        "metadata": {}
 	      }
 	    },
 	    "image-files": {
 	      "cover.jpg": {
-	        "size": "845 KB",
+	        "size": 845000,
 	        "timestamp": "2026-08-04T14:24:10Z",
 	        "metadata": {}
 	      }
 	    },
 	    "misc-files": {
 	      "notes.txt": {
-	        "size": "4.20 KB",
+	        "size": 4200,
 	        "timestamp": "2026-08-04T14:25:02Z",
 	        "metadata": {}
 	      }

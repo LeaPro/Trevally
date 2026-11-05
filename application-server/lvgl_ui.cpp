@@ -433,7 +433,7 @@ static std::string aboutRowValue(int row)
   {
   case ABOUT_ROW_NAME:             value = deviceInfoLeaf->deviceNamePtr->get(); break;
   case ABOUT_ROW_SERIAL_NUMBER:    value = deviceInfoLeaf->serialNumPtr->get();  break;
-  case ABOUT_ROW_FIRMWARE_VERSION: value = deviceInfoLeaf->arcFwVerPtr->get();   break;
+  case ABOUT_ROW_FIRMWARE_VERSION: value = deviceInfoLeaf->fwVerPtr->get();   break;
   }
   return value.empty() ? "-" : value;
 }
@@ -605,39 +605,36 @@ static void ribbonArtTapCb(lv_event_t *)
 {
   nav_goto(playbackDest);
 }
-// Orientation setting -> display rotation. The panel is natively portrait; landscape is
-// the same panel rotated 270 degrees in software, which only the framebuffer backend does
-// (the SDL simulator stays portrait). Layout sizes follow the display, see ui_is_landscape().
-#if LV_USE_LINUX_FBDEV
-static lv_display_rotation_t wantedRotation()
+// Orientation setting -> display layout. The panel is natively portrait; on the target,
+// landscape is the same panel rotated 270 degrees in software. The SDL simulator renders
+// in DIRECT mode, which LVGL can't rotate, so there the window is resized to landscape
+// instead. Layout sizes follow the display, see ui_is_landscape().
+static bool wantLandscape()
 {
-  const bool landscape = appearanceLeaf && appearanceLeaf->orientationPtr
-                         && appearanceLeaf->orientationPtr->get() == "landscape";
-  return landscape ? LV_DISPLAY_ROTATION_270 : LV_DISPLAY_ROTATION_0;
+  return appearanceLeaf && appearanceLeaf->orientationPtr
+         && appearanceLeaf->orientationPtr->get() == "landscape";
 }
-#endif
 
-// True if the Orientation setting no longer matches the display's rotation.
+// True if the Orientation setting no longer matches the display.
 static bool orientationNeedsChange()
 {
-#if LV_USE_LINUX_FBDEV
-  lv_display_t *display = lv_display_get_default();
-  return display && lv_display_get_rotation(display) != wantedRotation();
-#else
-  return false;
-#endif
+  return lv_display_get_default() && ui_is_landscape() != wantLandscape();
 }
 
 static void applyOrientation()
 {
-#if LV_USE_LINUX_FBDEV
   lv_display_t *display = lv_display_get_default();
   if (!display || !orientationNeedsChange())
     return;
-  lv_display_set_rotation(display, wantedRotation());
+  const bool landscape = wantLandscape();
+#if LV_USE_LINUX_FBDEV
+  lv_display_set_rotation(display, landscape ? LV_DISPLAY_ROTATION_270 : LV_DISPLAY_ROTATION_0);
+#elif LV_USE_SDL
+  lv_display_set_resolution(display, landscape ? UI_PANEL_H_PX : UI_PANEL_W_PX,
+                            landscape ? UI_PANEL_W_PX : UI_PANEL_H_PX);
+#endif
   if (homeScreen)
     lv_obj_set_size(homeScreen, lv_display_get_horizontal_resolution(display), lv_display_get_vertical_resolution(display));
-#endif
 }
 
 // Home: the scroll pane below the header (the pane reads its screens and tiles from the

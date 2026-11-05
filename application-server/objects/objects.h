@@ -13,6 +13,7 @@
 #include "CustomChannels.h"
 #include "Screens.h"
 #include "Tiles.h"
+#include "Roles.h"
 #include "LeaOutput.h"
 #include "LeaInput.h"
 #include "LeaControl.h"

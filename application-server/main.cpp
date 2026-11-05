@@ -129,6 +129,7 @@ int main(int argc, char *argv[])
     root->addLeaf<CustomChannels>("/customChannels");
     root->addLeaf<Screens>("/screens");
     root->addLeaf<Tiles>("/tiles");
+    root->addLeaf<Roles>("/roles");
     root->addLeaf<LeaOutput>("/leaOutput");
     root->addLeaf<LeaInput>("/leaInput");
     root->addLeaf<LeaControl>("/leaControl");
