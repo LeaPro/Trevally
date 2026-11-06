@@ -1,5 +1,6 @@
 #include "objects.h"
 #include "CustomChannelsClient.h"
+#include "AlbumArtFiles.h"
 #include <Common.h>
 
 #include <csignal>
@@ -205,6 +206,16 @@ CustomChannels::CustomChannels(string path, Object *parent)
   name = "channelId"; elements[name] = channelIdPtr = std::make_shared<UInt32Control>(path + "/" + name, this, 0, 99999999, 0, "id", true, true);
 
   name = "nowPlaying"; elements[name] = nowPlayingPtr = std::make_shared<JsonSensor>(path + "/" + name, this, json::object());
+  // Common track schema, same as bluetooth and soundtrack: filled from nowPlaying.metadata, empty when disabled or unknown.
+  // trackAlbumArt is the path of the downloaded album art file (the albumart_large image, else albumart_small); the file
+  // name changes with every new image; empty until the download has finished.
+  name = "trackTitle"; elements[name] = trackTitlePtr = std::make_shared<StringSensor>(path + "/" + name, this, "", 128);
+  name = "trackArtist"; elements[name] = trackArtistPtr = std::make_shared<StringSensor>(path + "/" + name, this, "", 128);
+  name = "trackAlbum"; elements[name] = trackAlbumPtr = std::make_shared<StringSensor>(path + "/" + name, this, "", 128);
+  // Length of the track and the position in it: Custom Channels does not provide them, so both stay 0
+  name = "trackDuration"; elements[name] = std::make_shared<UInt32Sensor>(path + "/" + name, this, 0, __UINT32_MAX__, 0, "s");
+  name = "trackPosition"; elements[name] = std::make_shared<UInt32Sensor>(path + "/" + name, this, 0, __UINT32_MAX__, 0, "s");
+  name = "trackAlbumArt"; elements[name] = trackAlbumArtPtr = std::make_shared<StringSensor>(path + "/" + name, this, "", 64);
   name = "isPlaying"; elements[name] = isPlayingPtr = std::make_shared<BoolSensor>(path + "/" + name, this, false);
   name = "play"; elements[name] = playPtr = std::make_shared<BoolControl>(path + "/" + name, this, false, true, true);
   name = "next"; elements[name] = nextPtr = std::make_shared<BoolControl>(path + "/" + name, this, false, false, true);
@@ -825,10 +836,68 @@ void CustomChannels::drainWorkerResponses()
   }
 }
 
+void CustomChannels::startAlbumArtDownload(const std::string &url, const std::string &fallbackUrl)
+{
+  albumArtDownload = std::async(std::launch::async, [url, fallbackUrl]() {
+    AlbumArtDownload r;
+    r.url = url;
+    r.file = AlbumArtFiles::download("customChannels", url);
+    // the server does not have every size for every album
+    if (r.file.empty() && !fallbackUrl.empty() && fallbackUrl != url)
+      r.file = AlbumArtFiles::download("customChannels", fallbackUrl);
+    return r;
+  });
+}
+
+// Mirrors nowPlaying.metadata into the track* elements and keeps the album art file in step with the album art URL
+void CustomChannels::syncTrackElements()
+{
+  const bool enabled = enabledPtr->get();
+  json md = json::object();
+  if (enabled && lastNowPlaying.is_object() && lastNowPlaying.contains("metadata") && lastNowPlaying["metadata"].is_object())
+    md = lastNowPlaying["metadata"];
+
+  trackTitlePtr->set(jsonStringOrEmpty(md, "title"));
+  trackArtistPtr->set(jsonStringOrEmpty(md, "artist"));
+  trackAlbumPtr->set(jsonStringOrEmpty(md, "album"));
+
+  // the largest album art the server has
+  const string smallUrl = jsonStringOrEmpty(md, "albumart_small");
+  const string largeUrl = jsonStringOrEmpty(md, "albumart_large");
+  const string url = largeUrl.empty() ? smallUrl : largeUrl;
+  const string fallbackUrl = largeUrl.empty() ? string() : smallUrl;
+
+  // a finished download: publish it when it is still what is wanted, drop it otherwise
+  if (albumArtDownload.valid() && albumArtDownload.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+    const AlbumArtDownload r = albumArtDownload.get();
+    if (r.url == url && !r.file.empty()) {
+      AlbumArtFiles::remove(albumArtShownFile);
+      albumArtShownUrl = r.url;
+      albumArtShownFile = r.file;
+    } else {
+      AlbumArtFiles::remove(r.file);
+      // failed (not merely outdated): try again in a while
+      albumArtRetryAt = (r.url == url) ? Clock::now() + std::chrono::seconds(15) : std::chrono::steady_clock::time_point{};
+    }
+  }
+
+  if (url.empty()) {
+    // no album art for the track (or not enabled): clear what is published
+    AlbumArtFiles::remove(albumArtShownFile);
+    albumArtShownFile.clear();
+    albumArtShownUrl.clear();
+  } else if (!albumArtDownload.valid() && url != albumArtShownUrl && Clock::now() >= albumArtRetryAt) {
+    startAlbumArtDownload(url, fallbackUrl);
+  }
+
+  trackAlbumArtPtr->set(albumArtShownFile);
+}
+
 void CustomChannels::update(bool sensorsOnly, bool refreshVolatileElements)
 {
   (void)refreshVolatileElements;
   drainWorkerResponses();
+  syncTrackElements();
 
   const bool nowEnabled = enabledPtr->get();
 
@@ -851,6 +920,7 @@ void CustomChannels::update(bool sensorsOnly, bool refreshVolatileElements)
     {
       websiteReachablePtr->set(false);
       lastWebsiteReachable = false;
+      websiteReachabilityKnown = false;
       lastWebsiteReachabilityCheckAt = {};
       cancelPendingWork();
       if (playback != nullptr)
@@ -868,6 +938,7 @@ void CustomChannels::update(bool sensorsOnly, bool refreshVolatileElements)
       formatPtr->reset();
       channelsPtr->reset();
       nowPlayingPtr->reset();
+      lastNowPlaying = json::object();
       isPlayingPtr->reset();
       pendingFetchAfterRefresh = false;
       pendingBootstrapRefresh = false;
@@ -927,6 +998,7 @@ void CustomChannels::runAutomation()
   if (!enabledPtr->get() || playback == nullptr) {
     websiteReachablePtr->set(false);
     lastWebsiteReachable = false;
+    websiteReachabilityKnown = false;
     lastWebsiteReachabilityCheckAt = {};
     return;
   }
@@ -934,12 +1006,25 @@ void CustomChannels::runAutomation()
   const auto now = Clock::now();
   const bool isRunning = playback->isRunning();
 
-  if (lastWebsiteReachabilityCheckAt.time_since_epoch().count() == 0 ||
-      (now - lastWebsiteReachabilityCheckAt) >= websiteReachabilityProbeInterval) {
+  // The probe does blocking DNS/connect, so run it off the io_context (LVGL) thread.
+  if (websiteReachabilityProbe.valid() &&
+      websiteReachabilityProbe.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+    lastWebsiteReachable = websiteReachabilityProbe.get();
+    websiteReachabilityKnown = true;
+    websiteReachablePtr->set(lastWebsiteReachable);
+  }
+  if (!websiteReachabilityProbe.valid() &&
+      (lastWebsiteReachabilityCheckAt.time_since_epoch().count() == 0 ||
+       (now - lastWebsiteReachabilityCheckAt) >= websiteReachabilityProbeInterval)) {
     lastWebsiteReachabilityCheckAt = now;
     const string probeUrl = apiUrl.empty() ? "https://pro.customchannels.net" : apiUrl;
-    lastWebsiteReachable = isWebsiteReachable(probeUrl);
-    websiteReachablePtr->set(lastWebsiteReachable);
+    websiteReachabilityProbe = std::async(std::launch::async, [probeUrl]() {
+      return isWebsiteReachable(probeUrl);
+    });
+  }
+
+  if (!websiteReachabilityKnown) {
+    return;
   }
 
   if (!lastWebsiteReachable) {
@@ -1022,6 +1107,14 @@ bool CustomChannels::setMixerVolume(uint32_t percent)
   const uint32_t effective = mutePtr->get() ? 0U : requested;
   const int normalized = static_cast<int>(effective);
   const string command =
-    "amixer -D net_audio sset 'NetAudio Playback Volume' " + std::to_string(normalized) + "% >/tmp/customchannels-amixer.log 2>&1";
+    "amixer -D net_audio sset 'NetAudio' " + std::to_string(normalized) + "% >/tmp/customchannels-amixer.log 2>&1";
+  if (std::system(command.c_str()) == 0) {
+    return true;
+  }
+
+  // net_audio is an ALSA softvol device: its 'NetAudio' control does not exist until the pcm has been opened once
+  // after boot (e.g. on the first boot of a freshly flashed image, before anything has played). Open it briefly with
+  // ~25 ms of silence to create the control, then retry.
+  std::system("dd if=/dev/zero bs=4800 count=1 2>/dev/null | aplay -q -D net_audio -t raw -f S16_LE -r 48000 -c 2 >/dev/null 2>&1");
   return std::system(command.c_str()) == 0;
 }

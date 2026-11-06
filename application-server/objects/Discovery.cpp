@@ -30,7 +30,13 @@ Discovery::~Discovery()
 
 void Discovery::update(bool sensorsOnly, bool refreshVolatileElements)
 {
-  macString = "ba:be:fa:ce:de:ad:be:ef";
-  modelIDString = "modelID";
-  serialNumberString = "serialNumber";
+  auto devInfo = std::dynamic_pointer_cast<DeviceInfo>(getRoot()->leafFromPath("/deviceInfo"));
+  auto ethernet = std::dynamic_pointer_cast<Ethernet>(getRoot()->leafFromPath("/network/ethernet"));
+  if (ethernet && !ethernet->macPtr->get().empty())
+    macString = ethernet->macPtr->get();
+  if (devInfo)
+  {
+    modelIDString = devInfo->modelIdPtr->get();
+    serialNumberString = devInfo->serialNumPtr->get();
+  }
 }
