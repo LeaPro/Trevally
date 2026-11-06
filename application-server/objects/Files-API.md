@@ -90,12 +90,6 @@ Example request:
 Params:
 - path: "<directory>/<file>", for example audio-files/tune.mp3
 
-Temporary: until the WebUI is updated, the form it currently sends is also accepted:
-
-    {"url":"/files/directory","method":"delete","params":"image-files/<id>"}
-
-This is marked TEMPORARY(webui-delete) in the code and will be removed.
-
 Return value:
 - "OK" on success
 - error/exception on failure

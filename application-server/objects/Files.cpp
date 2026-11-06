@@ -315,39 +315,10 @@ private:
 } // namespace
 #endif
 
-namespace {
-
-// TEMPORARY(webui-delete): the current WebUI sends
-//   {"url":"/files/directory","method":"delete","params":"image-files/<id>"}
-// instead of the documented
-//   {"url":"/files","method":"delete","params":{"path":"image-files/<id>"}}
-// This object makes /files/directory resolve to an object (leaf objects never visit their children,
-// so it is only reachable via url lookup) and converts the string params to the documented form.
-// Once the WebUI sends the documented form, remove everything tagged TEMPORARY(webui-delete),
-// in this file and in WebsocketAPI/WebsocketServer/LeaApiServer.cpp.
-class FilesDirectoryRoute final : public Object
-{
-public:
-	using Object::Object;
-	json processJson(const string &method, json &j, int client) override
-	{
-		if (method != "delete" || !j.is_string())
-		{
-			throw std::runtime_error("no object named directory");
-		}
-		json params = {{"path", j}};
-		return getParent()->processJson(method, params, client);
-	}
-};
-
-} // namespace
-
 Files::Files(string path, Object *parent) : LeafObject(path, parent)
 {
   string name;
   name = "directory"; elements[name] = directoryPtr = std::make_shared<JsonSensor>(path + "/" + name, this, json({}));
-  children[name] = std::make_shared<FilesDirectoryRoute>(path + "/" + name, this); // TEMPORARY(webui-delete)
-  methods.insert("delete"); // advertised via "info"
 }
 
 void Files::initialize()
