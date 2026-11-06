@@ -117,6 +117,10 @@ Misc::Misc(string path, Object *parent) : LeafObject(path, parent)
 
 void Misc::initialize()
 {
+  // clear any LED state left behind by a previous process (e.g. killed mid-pulse by a FW update reboot)
+  ledDriverReset.SetValue(1); // deassert reset (active-low)
+  led_controller::reset();
+
   // fwUpdateInProgress is persisted; if it survived a reboot the update completed
   if (fwUpdateInProgressPtr->get())
   {
@@ -268,6 +272,30 @@ void Misc::update(bool sensorsOnly, bool refreshVolatileElements)
         break;
       default:
         break;
+    }
+
+    // pulse the LEDs purple while a firmware update is underway
+    static bool fwPulseActive = false;
+    bool fwUpdateActive = fwUpdateInProgressPtr->get() ||
+                          state == FwUpdateStatesType::Downloading ||
+                          state == FwUpdateStatesType::Decrypting ||
+                          state == FwUpdateStatesType::Extraction ||
+                          state == FwUpdateStatesType::ExtractionComplete;
+    if (fwUpdateActive && !fwPulseActive)
+    {
+      fwPulseActive = true;
+      ledDriverReset.SetValue(1); // deassert reset (active-low)
+      if (led_controller::initialize())
+        led_controller::startPulse(128/*r*/, 0/*g*/, 255/*b*/, 2000/*periodMs*/);
+    }
+    else if (!fwUpdateActive && fwPulseActive)
+    {
+      fwPulseActive = false;
+      led_controller::stopPulse();
+      if (ledTestPtr->get())
+        led_controller::setAllBrightness(128);
+      else
+        led_controller::shutdown(true);
     }
   }
   else // non-sensors
