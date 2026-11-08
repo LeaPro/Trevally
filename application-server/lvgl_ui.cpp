@@ -25,6 +25,7 @@
 #include "ui/components/header.h"
 #include "ui/components/audio_source.h"
 #include "ui/components/audio_sources_page.h"
+#include "ui/components/fw_update_overlay.h"
 #include "ui/components/info_list.h"
 #include "ui/components/level_gauge.h"
 #include "ui/components/picker_wheel.h"
@@ -764,6 +765,14 @@ static void updateSetupMode()
     updateSetupScreen();
 }
 
+// Follows /misc/fwUpdateStatus and /misc/fwDownloadProgress with the firmware update overlay.
+static void updateFwUpdateOverlay()
+{
+  if (!miscLeaf || !miscLeaf->fwUpdateStatusPtr || !miscLeaf->fwDownloadProgressPtr)
+    return;
+  fw_update_overlay_update(miscLeaf->fwUpdateStatusPtr->get(), miscLeaf->fwDownloadProgressPtr->get());
+}
+
 // Applies a changed orientation: closes any open page, tears down everything whose
 // layout depends on the orientation, rotates the display, and builds it again.
 static void rebuildForOrientation()
@@ -871,6 +880,7 @@ static void scheduleLvglTick(std::shared_ptr<boost::asio::steady_timer> timer,
   }
   tile_live_update();
   updateSetupMode();
+  updateFwUpdateOverlay();
   updateSettingsValues();
   updateNetworkValues();
   updateAppearanceValues();
@@ -1017,6 +1027,8 @@ void lvglUiInit(boost::asio::io_context &io_context, std::shared_ptr<RootObject>
   buildPlayback();
   buildSetup();
   updateSetupMode();   // open on the setup screens, not home, if the device is not configured yet
+  fw_update_overlay_create();   // on the top layer: not rebuilt with the pages when the orientation changes
+  updateFwUpdateOverlay();
 
   // LVGL only flushes what changed, so on the framebuffer backend whatever was in the
   // framebuffer before the app started (boot splash, console, garbage after a reboot)
