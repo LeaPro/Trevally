@@ -33,6 +33,15 @@ Upload behavior:
 - If metadata_json is present and valid JSON, CGI writes a sidecar file:
   destination_dir/filename.metadata.json
 
+Firmware upload progress:
+- While a file named *.tar.xz.enc is uploading, the CGI sets /misc/fwUpdateStatus to Downloading and
+  /misc/fwDownloadProgress to the percentage received (100 once the file is saved), which drives the
+  screen overlay and the purple LED pulse. sftp-monitor then takes over (Decrypting, Extraction, ...)
+- The decision is made from the file name, since the category field is not readable until the whole
+  upload has arrived; uploads with any other file name never touch /misc
+- If the upload breaks off, the CGI sets DownloadingFail; if the file turns out not to be a
+  firmware-update upload, it sets None and progress back to 0
+
 How this interacts with Files API:
 - Files watches only audio-files, image-files, and misc-files
 - Files does not watch firmware-update (/var/tmp/sftp)

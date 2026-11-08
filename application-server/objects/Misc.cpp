@@ -230,6 +230,24 @@ void Misc::update(bool sensorsOnly, bool refreshVolatileElements)
     auto elapsed = rightNow - stateStartTime;
     switch (state)
     {
+      case FwUpdateStatesType::Downloading:
+      {
+        // upload.cgi reports progress as the file arrives; if it stops (e.g. the script was killed) give up
+        static float lastProgress = -1.0f;
+        static time_t progressTime = 0;
+        float progress = fwDownloadProgressPtr->get();
+        if (progress != lastProgress || elapsed == 0)
+        {
+          lastProgress = progress;
+          progressTime = rightNow;
+        }
+        else if (rightNow - progressTime > 60)
+        {
+          fwDownloadProgressPtr->set(0.0f);
+          fwUpdateStatusPtr->setEnumValue((int)FwUpdateStatesType::DownloadingFail);
+        }
+        break;
+      }
       case FwUpdateStatesType::Extraction:
         fwUpdateInProgressPtr->set(true);
         break;
