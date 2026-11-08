@@ -190,25 +190,43 @@ static std::mutex pulseMutex;
 static std::condition_variable pulseCv;
 static bool pulseStop = false;
 
-void led_controller::startPulse(uint8_t r, uint8_t g, uint8_t b, uint32_t periodMs)
+// Runs @p waveform (elapsed periods -> level 0..1) on all RGB LEDs at the given color, on a background thread until
+// stopPulse(). Only one animation runs at a time.
+static void startAnimation(uint8_t r, uint8_t g, uint8_t b, uint32_t periodMs, double (*waveform)(double phase))
 {
-  stopPulse();
+  led_controller::stopPulse();
   {
     std::lock_guard<std::mutex> lk(pulseMutex);
     pulseStop = false;
   }
-  pulseThread = std::thread([r, g, b, periodMs]()
+  pulseThread = std::thread([r, g, b, periodMs, waveform]()
   {
     const auto start = std::chrono::steady_clock::now();
     std::unique_lock<std::mutex> lk(pulseMutex);
     while (!pulseStop)
     {
       double phase = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count() / periodMs;
-      double level = 0.5 - 0.5 * std::cos(2.0 * M_PI * phase); // 0..1, starts dark
-      level *= level; // rough gamma so the fade looks even to the eye
-      setRgb((uint8_t)std::lround(r * level), (uint8_t)std::lround(g * level), (uint8_t)std::lround(b * level));
+      double level = waveform(phase);
+      led_controller::setRgb((uint8_t)std::lround(r * level), (uint8_t)std::lround(g * level), (uint8_t)std::lround(b * level));
       pulseCv.wait_for(lk, std::chrono::milliseconds(20), [] { return pulseStop; });
     }
+  });
+}
+
+void led_controller::startPulse(uint8_t r, uint8_t g, uint8_t b, uint32_t periodMs)
+{
+  startAnimation(r, g, b, periodMs, [](double phase)
+  {
+    double level = 0.5 - 0.5 * std::cos(2.0 * M_PI * phase); // 0..1, starts dark
+    return level * level; // rough gamma so the fade looks even to the eye
+  });
+}
+
+void led_controller::startBlink(uint8_t r, uint8_t g, uint8_t b, uint32_t periodMs)
+{
+  startAnimation(r, g, b, periodMs, [](double phase)
+  {
+    return phase - std::floor(phase) < 0.5 ? 1.0 : 0.0; // on for the first half of each period
   });
 }
 

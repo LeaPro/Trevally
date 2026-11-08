@@ -21,6 +21,9 @@ public:
   static bool setRgb(uint8_t r, uint8_t g, uint8_t b);
   // breathes all RGB LEDs at the given color on a background thread until stopPulse()
   static void startPulse(uint8_t r, uint8_t g, uint8_t b, uint32_t periodMs);
+  // blinks all RGB LEDs at the given color (on for half of each period) on a background thread until stopPulse()
+  static void startBlink(uint8_t r, uint8_t g, uint8_t b, uint32_t periodMs);
+  // stops the pulse or blink and turns the RGB LEDs off
   static void stopPulse();
 
   // Each RGB group drives two LEDs in parallel; per schematic OUTn=B, OUTn+1=R, OUTn+2=G.

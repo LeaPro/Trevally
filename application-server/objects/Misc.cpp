@@ -274,28 +274,43 @@ void Misc::update(bool sensorsOnly, bool refreshVolatileElements)
         break;
     }
 
-    // pulse the LEDs purple while a firmware update is underway
-    static bool fwPulseActive = false;
+    // LEDs: pulse purple while a firmware update is underway, blink red while it shows a failure
+    enum class FwLeds { Off, Pulse, Blink };
+    static FwLeds fwLeds = FwLeds::Off;
+    bool fwUpdateFailed = state == FwUpdateStatesType::DownloadingFail ||
+                          state == FwUpdateStatesType::DecryptingFail ||
+                          state == FwUpdateStatesType::ExtractionFail ||
+                          state == FwUpdateStatesType::HwNotSupportedInFw;
     bool fwUpdateActive = fwUpdateInProgressPtr->get() ||
                           state == FwUpdateStatesType::Downloading ||
+                          // the upload (upload.cgi) only reports progress; the status stays None until it is decrypted
+                          (state == FwUpdateStatesType::None && fwDownloadProgressPtr->get() > 0.0f) ||
                           state == FwUpdateStatesType::Decrypting ||
                           state == FwUpdateStatesType::Extraction ||
                           state == FwUpdateStatesType::ExtractionComplete;
-    if (fwUpdateActive && !fwPulseActive)
+    FwLeds wantedLeds = fwUpdateFailed ? FwLeds::Blink : fwUpdateActive ? FwLeds::Pulse : FwLeds::Off;
+    if (wantedLeds != fwLeds)
     {
-      fwPulseActive = true;
-      ledDriverReset.SetValue(1); // deassert reset (active-low)
-      if (led_controller::initialize())
-        led_controller::startPulse(128/*r*/, 0/*g*/, 255/*b*/, 2000/*periodMs*/);
-    }
-    else if (!fwUpdateActive && fwPulseActive)
-    {
-      fwPulseActive = false;
-      led_controller::stopPulse();
-      if (ledTestPtr->get())
-        led_controller::setAllBrightness(128);
+      fwLeds = wantedLeds;
+      if (wantedLeds == FwLeds::Off)
+      {
+        led_controller::stopPulse();
+        if (ledTestPtr->get())
+          led_controller::setAllBrightness(128);
+        else
+          led_controller::shutdown(true);
+      }
       else
-        led_controller::shutdown(true);
+      {
+        ledDriverReset.SetValue(1); // deassert reset (active-low)
+        if (led_controller::initialize())
+        {
+          if (wantedLeds == FwLeds::Blink)
+            led_controller::startBlink(255/*r*/, 0/*g*/, 0/*b*/, 1000/*periodMs*/);
+          else
+            led_controller::startPulse(128/*r*/, 0/*g*/, 255/*b*/, 2000/*periodMs*/);
+        }
+      }
     }
   }
   else // non-sensors

@@ -1,4 +1,5 @@
 #include "objects.h"
+#include "version.h"
 #include <string>
 #include <boost/algorithm/string.hpp>
 #include <boost/filesystem.hpp>
@@ -40,8 +41,8 @@ DeviceInfo::DeviceInfo(string path, Object *parent) : LeafObject(path, parent)
   name = "mfgTestModeControl";   elements[name] = mfgTestModeControlPtr   = std::make_shared<BoolControl>(path + "/" + name, this,  false/*default*/, false/*persistent*/);
   name = "mfgTestMode";          elements[name] = mfgTestModePtr          = std::make_shared<BoolSensor>(path + "/" + name, this, false/*default*/);
   name = "assetTagNumber";       elements[name] = assetTagNumberPtr       = std::make_shared<StringControl>(path + "/" + name, this, "Asset Tag ID"/*default*/, 64/*maxLength*/);
-  name = "firmwareVersion";      elements[name] = fwVerPtr             = std::make_shared<StringSensor>(path + "/" + name, this, "0.0.0.0"/*default*/, 32/*maxLength*/);
-  name = "RC";                   elements[name] = fwVerRcPtr           = std::make_shared<StringSensor>(path + "/" + name, this, ""/*default*/, 8/*maxLength*/);
+  name = "firmwareVersion";      elements[name] = fwVerPtr             = std::make_shared<StringSensor>(path + "/" + name, this, std::to_string(MAJOR_VER) + "." + std::to_string(MINOR_VER) + "." + std::to_string(RELEASE_VER) + "." + std::to_string(BUILD_VER)/*default*/, 32/*maxLength*/);
+  name = "RC";                   elements[name] = fwVerRcPtr           = std::make_shared<StringSensor>(path + "/" + name, this, RC_NUM/*default*/, 8/*maxLength*/);
   name = "upTime";                     elements[name] = upTimePtr         = std::make_shared<StringSensor>(path + "/" + name, this, ""/*default*/, 64/*maxLength*/, true/*publishAsControlFlag*/);
   name = "mfgTest";                    elements[name] = mfgTestPtr        = std::make_shared<StringSensor>(path + "/" + name, this, ""/*default*/, 8/*maxLength*/, true/*publishAsControlFlag*/);
   name = "mftResult";                  elements[name] = mftResultPtr      = std::make_shared<StringSensor>(path + "/" + name, this, ""/*default*/, 8/*maxLength*/, true/*publishAsControlFlag*/);
