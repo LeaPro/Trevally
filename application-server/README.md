@@ -13,8 +13,34 @@ The Makefile supports two modes:
   Yocto SDK's environment setup script, which sets `SDKTARGETSYSROOT`.
 
 The host build requires LVGL to be built and installed natively first, since
-`application-server` links against it. Follow the steps below once per
-machine.
+`application-server` links against it.
+
+### Host build in Docker (no system packages needed)
+
+`docker/` contains an Ubuntu 24.04 image with every host-build dependency, so
+nothing besides Docker needs to be installed on your machine. Your home
+directory is mounted at the same path, and the desktop display is passed
+through so the LVGL SDL window opens on your screen.
+
+```bash
+cd ~/LEA/Trevally/application-server
+docker/build.sh                               # once (and after Dockerfile changes)
+docker/run.sh ~/LEA/LEA-LVGL/build.sh         # build + install LVGL into ~/.local
+docker/run.sh make -j"$(nproc)"               # build application-server
+docker/run.sh ./obj-host/application-server   # run it
+docker/run.sh ./build-appimage.sh             # package AppImage/Trevally-x86_64.AppImage
+docker/run.sh                                 # or open a shell in the container
+```
+
+The AppImage runs directly on the host (no Docker needed). Since the image is
+Ubuntu 24.04, it needs glibc 2.39 or newer on the machine that runs it.
+
+LEA-LVGL must be cloned with its `lvgl` submodule
+(`git -C ~/LEA/LEA-LVGL submodule update --init`).
+
+### Host build without Docker
+
+Follow the steps below once per machine.
 
 ### 1. Install system dependencies
 
