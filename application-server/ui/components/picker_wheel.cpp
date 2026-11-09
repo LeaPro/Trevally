@@ -13,9 +13,8 @@
  * - Top fade gradient: 196px height, background color (opaque) to transparent - theme-aware
  * - Bottom fade gradient: 196px height, transparent to background color (opaque) - theme-aware
  * 
- * Note: Gradients are implemented using LVGL canvas with ARGB8888 format for
- * proper alpha channel support, as standard LVGL gradients don't support
- * opacity transitions. Gradient colors adapt to the current theme.
+ * Note: The fades are plain objects with a vertical style gradient whose two stops are the
+ * theme background color at different opacities (ui_theme_get_style_bg_fade()).
  */
 
 #include "picker_wheel.h"
@@ -57,10 +56,6 @@ typedef struct {
     lv_obj_t** primary_labels;
     lv_obj_t** secondary_labels;
     lv_obj_t** accessory_objs;
-    lv_obj_t* top_fade;       // Top gradient canvas
-    lv_obj_t* bottom_fade;    // Bottom gradient canvas
-    void* top_fade_buf;
-    void* bottom_fade_buf;
     int touch_pressed_index;
     bool external_press_active;
 } picker_wheel_data_t;
@@ -73,8 +68,7 @@ static bool is_alt_highlight_active(const picker_wheel_data_t* data);
 static lv_color_t selected_accent_color(const picker_wheel_data_t* data);
 static void refresh_highlight_box_color(picker_wheel_data_t* data);
 static void refresh_selected_accent(picker_wheel_data_t* data);
-static void update_fade_gradient(lv_obj_t* canvas, int width, int height, bool top_fade);
-static void create_fade_gradient(lv_obj_t* canvas, int width, int height, bool top_fade, void** out_buf);
+static void create_fade(lv_obj_t* parent, bool top);
 static void theme_changed_cb(lv_event_t* e);
 static void picker_wheel_delete_cb(lv_event_t* e);
 static lv_text_align_t normalize_text_align(lv_text_align_t align);
@@ -123,10 +117,6 @@ lv_obj_t* picker_wheel_create(lv_obj_t* parent, const picker_wheel_props_t* prop
     memcpy(&data->props, props, sizeof(picker_wheel_props_t));
     data->scroll_area = NULL;
     data->highlight_box = NULL;
-    data->top_fade = NULL;
-    data->bottom_fade = NULL;
-    data->top_fade_buf = NULL;
-    data->bottom_fade_buf = NULL;
     data->items_copy = NULL;
     data->item_rows = NULL;
     data->primary_labels = NULL;
@@ -205,19 +195,8 @@ lv_obj_t* picker_wheel_create(lv_obj_t* parent, const picker_wheel_props_t* prop
     lv_obj_set_size(bottom_spacer, ITEM_WIDTH, FADE_HEIGHT);
     lv_obj_clear_flag(bottom_spacer, LV_OBJ_FLAG_CLICKABLE);
     
-    // Create top fade gradient canvas (background color to transparent, top 196px)
-    data->top_fade = lv_canvas_create(container);
-    lv_obj_align(data->top_fade, LV_ALIGN_TOP_MID, 0, 0);
-    lv_obj_add_flag(data->top_fade, LV_OBJ_FLAG_FLOATING);  // Don't affect layout
-    lv_obj_clear_flag(data->top_fade, LV_OBJ_FLAG_CLICKABLE);  // Allow clicks to pass through
-    create_fade_gradient(data->top_fade, PICKER_WIDTH, FADE_HEIGHT, true, &data->top_fade_buf);
-    
-    // Create bottom fade gradient canvas (transparent to background color, bottom 196px)
-    data->bottom_fade = lv_canvas_create(container);
-    lv_obj_align(data->bottom_fade, LV_ALIGN_BOTTOM_MID, 0, 0);
-    lv_obj_add_flag(data->bottom_fade, LV_OBJ_FLAG_FLOATING);  // Don't affect layout
-    lv_obj_clear_flag(data->bottom_fade, LV_OBJ_FLAG_CLICKABLE);  // Allow clicks to pass through
-    create_fade_gradient(data->bottom_fade, PICKER_WIDTH, FADE_HEIGHT, false, &data->bottom_fade_buf);
+    create_fade(container, true);
+    create_fade(container, false);
 
     lv_obj_update_layout(data->scroll_area);
     set_selected_index(data, props->selected_index, false);
@@ -225,7 +204,7 @@ lv_obj_t* picker_wheel_create(lv_obj_t* parent, const picker_wheel_props_t* prop
     refresh_all_item_visuals(data);
     refresh_highlight_box_color(data);
     
-    // Listen for theme changes to update gradients automatically. This
+    // Listen for theme changes to refresh the rows' colors. This
     // fires because container itself has ui_theme_get_style_bg() applied
     // above - lv_obj_report_style_change(&styleBg) targets every object
     // using that exact style object, container included.
@@ -608,76 +587,19 @@ static void create_picker_item(lv_obj_t* parent, picker_wheel_data_t* data, int 
 }
 
 /**
- * Update fade gradient pixels with current theme color
- * @param canvas Canvas object to update
- * @param width Width of the gradient
- * @param height Height of the gradient
- * @param top_fade true for top fade (opaque to transparent), false for bottom fade (transparent to opaque)
+ * Create a fade over the top or bottom FADE_HEIGHT px of the picker: the theme background
+ * color, opaque at the picker's edge and transparent towards its middle.
  */
-static void update_fade_gradient(lv_obj_t* canvas, int width, int height, bool top_fade) {
-    if (!canvas) return;
-    
-    // Get the existing canvas buffer
-    lv_draw_buf_t* draw_buf = lv_canvas_get_draw_buf(canvas);
-    if (!draw_buf || !draw_buf->data) return;
-    
-    uint32_t* pixels = (uint32_t*)draw_buf->data;
-    
-    // Get current theme background color (full RGB: custom themes aren't grayscale)
-    lv_color_t bg_color = ui_get_background_color();
-    uint32_t bg_rgb = ((uint32_t)bg_color.red << 16) | ((uint32_t)bg_color.green << 8) | bg_color.blue;  // 0x00RRGGBB
-    
-    // Update gradient pixel by pixel with new color
-    for (int y = 0; y < height; y++) {
-        // Calculate alpha based on position
-        uint8_t alpha;
-        if (top_fade) {
-            // Top fade: opaque (255) at top to transparent (0) at bottom
-            alpha = (uint8_t)(255 * (height - y) / height);
-        } else {
-            // Bottom fade: transparent (0) at top to opaque (255) at bottom
-            alpha = (uint8_t)(255 * y / height);
-        }
-        
-        // Create ARGB8888 pixel value (background color with varying alpha)
-        uint32_t pixel = ((uint32_t)alpha << 24) | bg_rgb;  // AARRGGBB format
-        
-        // Fill the entire row with this pixel
-        for (int x = 0; x < width; x++) {
-            pixels[y * width + x] = pixel;
-        }
-    }
-    
-    // Refresh the canvas
-    lv_obj_invalidate(canvas);
-}
-
-/**
- * Create a fade gradient using canvas (initial setup)
- * @param canvas Canvas object to draw on
- * @param width Width of the gradient
- * @param height Height of the gradient
- * @param top_fade true for top fade (opaque to transparent), false for bottom fade (transparent to opaque)
- */
-static void create_fade_gradient(lv_obj_t* canvas, int width, int height, bool top_fade, void** out_buf) {
-    // Allocate buffer for canvas (ARGB8888 format for full alpha support)
-    // Allocate new buffer (4 bytes per pixel for ARGB8888)
-    size_t buf_size = width * height * 4;
-    lv_color_t* cbuf = (lv_color_t*)malloc(buf_size);
-    
-    if (!cbuf) {
-        return;  // Allocation failed
-    }
-
-    if (out_buf) {
-        *out_buf = cbuf;
-    }
-    
-    // Set canvas buffer with ARGB8888 format
-    lv_canvas_set_buffer(canvas, cbuf, width, height, LV_COLOR_FORMAT_ARGB8888);
-    
-    // Use update function to fill the pixels (reuse logic)
-    update_fade_gradient(canvas, width, height, top_fade);
+static void create_fade(lv_obj_t* parent, bool top) {
+    lv_obj_t* fade = lv_obj_create(parent);
+    lv_obj_remove_style_all(fade);
+    lv_obj_set_size(fade, PICKER_WIDTH, FADE_HEIGHT);
+    lv_obj_align(fade, top ? LV_ALIGN_TOP_MID : LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_add_flag(fade, LV_OBJ_FLAG_FLOATING);       // Don't affect layout
+    lv_obj_remove_flag(fade, LV_OBJ_FLAG_CLICKABLE);   // Allow clicks to pass through
+    lv_obj_add_style(fade, ui_theme_get_style_bg_fade(), 0);
+    lv_obj_set_style_bg_main_opa(fade, top ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_grad_opa(fade, top ? LV_OPA_TRANSP : LV_OPA_COVER, 0);
 }
 
 /**
@@ -775,9 +697,7 @@ void picker_wheel_set_press_active(lv_obj_t* picker, bool active) {
 }
 
 /**
- * Delete event callback - releases the component data and gradient buffers.
- * LV_EVENT_DELETE is sent before the children are deleted, which is the point
- * LVGL expects user-owned resources (such as canvas buffers) to be freed.
+ * Delete event callback - releases the component data.
  */
 static void picker_wheel_delete_cb(lv_event_t* e) {
     lv_obj_t* container = (lv_obj_t *)lv_event_get_target(e);
@@ -785,8 +705,6 @@ static void picker_wheel_delete_cb(lv_event_t* e) {
     if (!data) return;
 
     lv_obj_set_user_data(container, NULL);
-    free(data->top_fade_buf);
-    free(data->bottom_fade_buf);
     free(data->accessory_objs);
     free(data->secondary_labels);
     free(data->primary_labels);
@@ -804,15 +722,6 @@ static void theme_changed_cb(lv_event_t* e) {
     
     picker_wheel_data_t* data = (picker_wheel_data_t*)lv_obj_get_user_data(container);
     if (!data) return;
-    
-    // Update both gradient canvases with the new theme color
-    // Reuses existing buffer - no memory allocation/deallocation needed
-    if (data->top_fade) {
-        update_fade_gradient(data->top_fade, PICKER_WIDTH, FADE_HEIGHT, true);
-    }
-    if (data->bottom_fade) {
-        update_fade_gradient(data->bottom_fade, PICKER_WIDTH, FADE_HEIGHT, false);
-    }
 
     refresh_all_item_visuals(data);
     refresh_highlight_box_color(data);

@@ -178,6 +178,7 @@ static lv_style_t styleIconPrimary;
 static lv_style_t styleBgIconPrimary;
 static lv_style_t styleBgBorder;
 static lv_style_t styleKnobBorder;
+static lv_style_t styleBgFade;
 
 // Icon recolor style, applied to lv_image icons (not labels) via
 // ui_icon_create() - image_recolor is the lv_image equivalent of a label's
@@ -211,6 +212,8 @@ static void applyTheme(void)
   lv_style_set_bg_color(&styleBgIconPrimary, ui_get_icon_primary_color());
   lv_style_set_bg_color(&styleBgBorder, ui_get_border_color());
   lv_style_set_border_color(&styleKnobBorder, ui_get_background_color());
+  lv_style_set_bg_color(&styleBgFade, ui_get_background_color());
+  lv_style_set_bg_grad_color(&styleBgFade, ui_get_background_color());
   lv_style_set_image_recolor(&styleImageIconPrimary, ui_get_icon_primary_color());
 
   lv_obj_report_style_change(&styleBg);
@@ -224,6 +227,7 @@ static void applyTheme(void)
   lv_obj_report_style_change(&styleBgIconPrimary);
   lv_obj_report_style_change(&styleBgBorder);
   lv_obj_report_style_change(&styleKnobBorder);
+  lv_obj_report_style_change(&styleBgFade);
   lv_obj_report_style_change(&styleImageIconPrimary);
 }
 
@@ -287,6 +291,11 @@ lv_style_t *ui_theme_get_style_knob_border(void)
   return &styleKnobBorder;
 }
 
+lv_style_t *ui_theme_get_style_bg_fade(void)
+{
+  return &styleBgFade;
+}
+
 // Creates an lv_image showing the icon's PNG asset, with the recolor style
 // attached so it repaints automatically on theme change. Falls back to a
 // plain symbol label if the image failed to decode - in practice this
@@ -338,6 +347,10 @@ void ui_design_tokens_init(std::shared_ptr<Appearance> appearance, std::shared_p
   lv_style_init(&styleBgIconPrimary);
   lv_style_init(&styleBgBorder);
   lv_style_init(&styleKnobBorder);
+
+  lv_style_init(&styleBgFade);
+  lv_style_set_bg_opa(&styleBgFade, LV_OPA_COVER);
+  lv_style_set_bg_grad_dir(&styleBgFade, LV_GRAD_DIR_VER);
 
   lv_style_init(&styleImageIconPrimary);
   lv_style_set_image_recolor_opa(&styleImageIconPrimary, LV_OPA_COVER);

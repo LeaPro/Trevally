@@ -10,12 +10,11 @@
  * and lv_obj_report_style_change() is called for each - any widget that
  * applied one of these styles via lv_obj_add_style() (rather than baking a
  * one-off color in with lv_obj_set_style_*_color()) repaints automatically.
- * A widget that can't be driven by a style at all (e.g. picker_wheel's
- * hand-drawn canvas gradients) instead applies one of these styles to its
- * own top-level container purely so LV_EVENT_STYLE_CHANGED fires on it,
- * and reacts to that event by redoing its manual drawing - see
- * picker_wheel.cpp's theme_changed_cb(), ported as-is from the old
- * prototype's identical pattern.
+ * A widget with state that can't be driven by a style alone (e.g.
+ * picker_wheel's per-row selected/unselected colors) instead applies one of
+ * these styles to its own top-level container purely so
+ * LV_EVENT_STYLE_CHANGED fires on it, and reacts to that event by
+ * refreshing that state - see picker_wheel.cpp's theme_changed_cb().
  */
 
 #pragma once
@@ -153,6 +152,10 @@ lv_style_t *ui_theme_get_style_image_icon_primary(void);
 /* border_color == background color; used for the thin "cut-out" border
  * around elements like a slider knob that floats above a filled track. */
 lv_style_t *ui_theme_get_style_knob_border(void);
+/* Vertical background-color gradient (both stops are the background color). Set the fade
+ * direction per object with lv_obj_set_style_bg_main_opa()/_bg_grad_opa(), e.g. COVER -> TRANSP
+ * for content fading out towards the bottom (see picker_wheel.cpp). */
+lv_style_t *ui_theme_get_style_bg_fade(void);
 
 /* Re-resolves every token's color from the current theme key (Appearance::
  * themePtr) and, for custom theme, the theme leaf's config, then

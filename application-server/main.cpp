@@ -176,6 +176,9 @@ int main(int argc, char *argv[])
       io_context.restart();
     io_context.run();
     lvglUiShutdown();
+    // Objects in the tree own sockets/timers bound to io_context; drop our reference while
+    // io_context is still alive (as a global it would otherwise be destroyed before root).
+    root.reset();
   }
   catch (std::exception &e)
   {
