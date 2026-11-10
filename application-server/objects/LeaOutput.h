@@ -7,5 +7,7 @@ public:
   LeaOutput(std::string path, Object *parent);
   void initialize() override { LeafObject::initialize(); }
   using LeafObject::update;
-  void update(bool sensorsOnly = false, bool refreshVolatileElements = false) override {}
+  void update(bool sensorsOnly = false, bool refreshVolatileElements = false) override;
+private:
+  json appliedConfig; // last config handed to /outputFaders
 };

@@ -7,7 +7,7 @@
  * fonts, which leaf it reads and what it shows - belongs to its type, and
  * each type is built by its own tile_<type>.cpp:
  *
- *   OUTPUT_VOLUME  tile_output_volume.cpp   (value shows "-"; will come from /leaOutput config)
+ *   OUTPUT_VOLUME  tile_output_volume.cpp   /outputFaders/<binding> (a /leaOutput config uuid)
  *   INPUT          tile_input.cpp           (values show "-"; will come from /leaInput config)
  *   CONTROL        tile_control.cpp         (value shows "-"; will come from /leaControl config)
  *   SENSOR         tile_sensor.cpp          (value shows "-"; will come from /leaSensor config)
@@ -94,6 +94,7 @@ lv_obj_t *tile_weather_degrees_create(lv_obj_t *parent, const std::string &degre
 /* Pages: a tile type may open its own page (see nav.h) when tapped. Types with a
  * page are made clickable by tile_create(). */
 void tile_bluetooth_volume_open(const std::string &name, const std::string &binding);
+void tile_output_volume_open(const std::string &name, const std::string &binding);
 void tile_streaming_volume_open(const std::string &name, const std::string &binding,
                                 const std::string &tileId);
 

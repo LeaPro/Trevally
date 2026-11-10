@@ -15,6 +15,7 @@
 #include "Tiles.h"
 #include "Roles.h"
 #include "LeaOutput.h"
+#include "OutputFaders.h"
 #include "LeaInput.h"
 #include "LeaControl.h"
 #include "LeaSensor.h"

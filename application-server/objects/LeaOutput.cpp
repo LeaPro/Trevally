@@ -1,4 +1,5 @@
 #include "LeaOutput.h"
+#include "OutputFaders.h"
 
 /*
 "config" is a collection of output-proxy info blobs keyed by UUID, e.g.:
@@ -17,10 +18,27 @@
 }
 This is a generic JsonControl; whole-blob get/set and granular add/update/remove
 (via url subpath) are handled entirely by JsonElement::processJson().
+The live fader values of these entries are elements of /outputFaders (see OutputFaders.h), kept in
+step with the config by update().
 */
 LeaOutput::LeaOutput(string path, Object *parent) : LeafObject(path, parent)
 {
   methods.insert({"add", "update", "remove"});
   string name;
   name = "config"; elements[name] = std::make_shared<JsonControl>(path + "/" + name, this, json::object());
+}
+
+void LeaOutput::update(bool sensorsOnly, bool refreshVolatileElements)
+{
+  if (sensorsOnly)
+    return;
+  auto config = std::dynamic_pointer_cast<JsonControl>(elements["config"]);
+  auto faders = std::dynamic_pointer_cast<OutputFaders>(getRoot()->leafFromPath("/outputFaders"));
+  if (!config || !faders)
+    return;
+  json current = config->get();
+  if (current == appliedConfig)
+    return;
+  appliedConfig = current;
+  faders->apply(current);
 }

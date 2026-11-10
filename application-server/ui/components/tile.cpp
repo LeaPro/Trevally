@@ -9,6 +9,7 @@
 #include "adaptive_text.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <map>
@@ -58,6 +59,7 @@ static void tile_clicked_cb(lv_event_t *e)
         switch (t.type) {
         case BLUETOOTH: tile_bluetooth_volume_open(t.name, t.binding); break;
         case STREAMING: tile_streaming_volume_open(t.name, t.binding, t.id); break;
+        case OUTPUT_VOLUME: tile_output_volume_open(t.name, t.binding); break;
         default: break;
         }
         return;
@@ -88,7 +90,7 @@ lv_obj_t *tile_create(lv_obj_t *parent, tile_type_t type, const std::string &id,
     }
 
     /* Types that have a page open it when tapped. */
-    if (type == BLUETOOTH || type == STREAMING) {
+    if (type == BLUETOOTH || type == STREAMING || type == OUTPUT_VOLUME) {
         lv_obj_add_flag(tile, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_add_event_cb(tile, tile_clicked_cb, LV_EVENT_CLICKED, NULL);
         tileTaps.push_back({tile, lv_obj_get_screen(tile), type, id, name, binding});
@@ -266,7 +268,7 @@ void tile_live_update()
     for (LiveNumber &b : liveNumbers) {
         if (b.screen != active) continue;   /* refreshed on the first tick after it becomes active */
         TileNumber n = readNumber(b.element.get());
-        if (n.value == b.last) continue;
+        if (n.value == b.last || (std::isnan(n.value) && std::isnan(b.last))) continue;
         b.last = n.value;
         if (b.label) lv_label_set_text(b.label, tile_format_number(n.value).c_str());
         if (b.range) {
@@ -335,6 +337,7 @@ void tile_set_bool(const std::string &leafPath, const char *elementName, bool va
 
 std::string tile_format_number(float value)
 {
+    if (std::isnan(value)) return "-";   /* not known yet (e.g. an amp level before the amp reports it) */
     char buf[32];
     snprintf(buf, sizeof(buf), (value == (float)(long)value) ? "%.0f" : "%.1f", value);
     return buf;
