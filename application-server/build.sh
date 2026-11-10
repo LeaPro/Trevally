@@ -1,14 +1,13 @@
-if [[ -e $(realpath toolchainSetup) ]] ; then
-  unset LD_LIBRARY_PATH
-  source toolchainSetup
-  if [[ -z $SDKTARGETSYSROOT ]] ; then
-    echo "SDKTARGETSYSROOT is not set; something is amiss with your sdk environment :("
-    exit 1
-  fi
-  make "$@"
-else
-  echo "toolchainSetup does not exist: it should be a symbolic link to your yocto sdk environment-setup script"
-  echo "e.g.: ln -s ../../yocto-scarthgap/sdk/trevally/environment-setup-aarch64-oe-linux toolchainSetup"
-  echo "(note that the location may vary by user, so the link is not kept in the git repo)"
+#!/bin/bash
+# Cross-builds application-server for the target the same way the image build does: in the
+# yocto-scarthgap docker container, via build-trevally's Makefile, which also copies the binary
+# into meta-lea-trevally for the next image.
+#
+# usage: ./build.sh [make goals/flags, e.g. clean or -j8]
+SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
+BUILD_TREVALLY_DIR=$(realpath -m "$SCRIPT_DIR/../../yocto-scarthgap/build-trevally")
+if [[ ! -x $BUILD_TREVALLY_DIR/docker-run ]] ; then
+  echo "$BUILD_TREVALLY_DIR/docker-run not found: yocto-scarthgap must be cloned next to Trevally (e.g. ~/LEA/yocto-scarthgap)"
   exit 1
 fi
+cd "$BUILD_TREVALLY_DIR" && exec ./docker-run make application-server "$@"

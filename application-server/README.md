@@ -10,7 +10,8 @@ The Makefile supports two modes:
   environment variable is not set.
 - **Target build** — cross-compiles using the Yocto SDK for Trevally
   (DRM/evdev backend). This happens automatically once you have sourced the
-  Yocto SDK's environment setup script, which sets `SDKTARGETSYSROOT`.
+  Yocto SDK's environment setup script, which sets `SDKTARGETSYSROOT`;
+  `build.sh` does that for you (see "Building for the target" below).
 
 The host build requires LVGL to be built and installed natively first, since
 `application-server` links against it.
@@ -81,3 +82,24 @@ make -j"$(nproc)"
 The resulting binary is `obj-host/application-server` (target builds use `obj/`). The Makefile adds an
 rpath pointing at `~/.local/lib`, so it will find the LVGL shared libraries
 at runtime without needing `LD_LIBRARY_PATH` set.
+
+## Building for the target (target build)
+
+```bash
+cd ~/LEA/Trevally/application-server
+./build.sh            # cross-build obj/application-server
+./build.sh clean      # make clean, in the same environment
+./build.sh -j"$(nproc)"
+```
+
+`build.sh` builds the same way the firmware image build does: it runs
+`make application-server` from `~/LEA/yocto-scarthgap/build-trevally` inside the
+yocto-scarthgap docker container (`docker-run`), whose Makefile sources the
+Trevally SDK's environment setup script and runs `make` here. That requires
+yocto-scarthgap to be cloned next to this repo, its docker image to be built
+(`~/LEA/yocto-scarthgap/docker/build.sh`) and the SDK to be installed
+(`make sdk` in build-trevally, which `build-trevally/build.sh` also does).
+
+After a successful build the Makefile copies `obj/application-server` into
+`meta-lea-trevally/recipes-core/application-server-service/files`, so the next
+image (`build-trevally/build.sh`) ships the binary you just built.
