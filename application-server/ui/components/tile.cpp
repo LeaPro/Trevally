@@ -66,6 +66,16 @@ static void tile_clicked_cb(lv_event_t *e)
     }
 }
 
+/* Widgets such as lv_slider join the default (encoder) group when created. Tiles are display-only, so
+ * keep them out: a group refocus landing on one would scroll the pane to its screen. */
+static void tile_remove_from_group(lv_obj_t *obj)
+{
+    lv_group_remove_obj(obj);
+    const uint32_t count = lv_obj_get_child_count(obj);
+    for (uint32_t i = 0; i < count; i++)
+        tile_remove_from_group(lv_obj_get_child(obj, (int32_t)i));
+}
+
 lv_obj_t *tile_create(lv_obj_t *parent, tile_type_t type, const std::string &id,
                       const std::string &name, const std::string &binding,
                       int w, int h)
@@ -88,6 +98,7 @@ lv_obj_t *tile_create(lv_obj_t *parent, tile_type_t type, const std::string &id,
     case WEATHER:       tile_weather_build      (tile, name, binding, w, h); break;
     case MACRO:         tile_macro_build        (tile, name, binding, w, h); break;
     }
+    tile_remove_from_group(tile);
 
     /* Types that have a page open it when tapped. */
     if (type == BLUETOOTH || type == STREAMING || type == OUTPUT_VOLUME) {

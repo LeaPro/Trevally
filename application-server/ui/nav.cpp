@@ -15,11 +15,15 @@ static nav_dest_t homeDest    = {nullptr, nullptr};
 static nav_dest_t currentDest = {nullptr, nullptr};
 static std::vector<nav_page_t> stack;   /* transient pages above currentDest */
 
+/* Must run before the screen being left is deleted: deleting the focused object makes LVGL refocus
+ * the group's next object, and focusing an object scrolls it into view (e.g. the home pane to
+ * another screen). */
 static void take_focus(lv_obj_t *obj)
 {
     lv_group_t *group = lv_group_get_default();
     if (!group || !obj) return;
-    lv_group_add_obj(group, obj);
+    /* re-adding removes the object first, which refocuses the group if it is focused */
+    if (lv_obj_get_group(obj) != group) lv_group_add_obj(group, obj);
     lv_group_focus_obj(obj);
     lv_group_set_editing(group, true);
 }
@@ -63,8 +67,8 @@ void nav_replace(const nav_page_t &page)
     }
     tile_live_clear(stack.back().screen);
     stack.back() = page;
-    lv_screen_load_anim(page.screen, LV_SCREEN_LOAD_ANIM_NONE, 0, 0, true);   /* deletes the replaced page */
     take_focus(page.focus);
+    lv_screen_load_anim(page.screen, LV_SCREEN_LOAD_ANIM_NONE, 0, 0, true);   /* deletes the replaced page */
 }
 
 void nav_pop(size_t count)
@@ -87,8 +91,8 @@ void nav_pop(size_t count)
     tile_live_clear(leaving.screen);
 
     const nav_page_t &target = stack.empty() ? currentDest : stack.back();
-    lv_screen_load_anim(target.screen, LV_SCREEN_LOAD_ANIM_NONE, 0, 0, true);   /* deletes the popped page */
     take_focus(target.focus);
+    lv_screen_load_anim(target.screen, LV_SCREEN_LOAD_ANIM_NONE, 0, 0, true);   /* deletes the popped page */
 }
 
 void nav_goto(const nav_dest_t &dest, bool animate)
@@ -107,11 +111,11 @@ void nav_goto(const nav_dest_t &dest, bool animate)
 
     currentDest = dest;
     const bool goingHome = dest.screen == homeDest.screen;
+    take_focus(dest.focus);
     lv_screen_load_anim(dest.screen,
                         !animate ? LV_SCREEN_LOAD_ANIM_NONE
                                  : goingHome ? LV_SCREEN_LOAD_ANIM_MOVE_RIGHT : LV_SCREEN_LOAD_ANIM_MOVE_LEFT,
                         animate ? NAV_ANIM_MS : 0, 0, deleteActive);
-    take_focus(dest.focus);
 }
 
 void nav_close_pages(bool animate)
