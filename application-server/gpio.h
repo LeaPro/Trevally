@@ -84,6 +84,7 @@ private:
 	struct pollfd fdset;
 	bool exported = false;
 	bool opened = false;
+	bool loggedGetValueError = false;
 };
 
 

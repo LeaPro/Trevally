@@ -1,0 +1,120 @@
+/**
+ * @file header.cpp
+ * @brief See header.h.
+ */
+
+#include "header.h"
+#include "adaptive_text.h"
+
+#include <string.h>
+
+#define HEADER_TITLE_MAX_LINES 1
+static lv_obj_t *make_slot(lv_obj_t *header, const header_slot_t &slot)
+{
+    lv_obj_t *s = lv_obj_create(header);
+    lv_obj_remove_style_all(s);
+    lv_obj_clear_flag(s, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(s, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_size(s, UI_HEADER_H_PX, UI_HEADER_H_PX);
+    if (!slot.show) return s;
+
+    if (slot.text) {
+        lv_obj_t *label = lv_label_create(s);
+        lv_obj_add_style(label, ui_theme_get_style_text_primary(), 0);
+        lv_obj_set_style_text_font(label, &satoshi_medium_20, 0);
+        lv_label_set_text(label, slot.text);
+        lv_obj_center(label);
+    } else {
+        lv_obj_t *icon = UI_ICON_CREATE_DEFAULT(s, slot.icon);
+        if (icon) lv_obj_center(icon);
+    }
+
+    if (slot.on_click) {
+        lv_obj_add_flag(s, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_event_cb(s, slot.on_click, LV_EVENT_CLICKED, slot.user_data);
+    }
+    return s;
+}
+
+lv_obj_t *header_create(lv_obj_t *parent, const header_slot_t &left,
+                        const char *title, const header_slot_t &right, const lv_font_t *font)
+{
+    lv_obj_t *h = lv_obj_create(parent);
+    lv_obj_remove_style_all(h);
+    lv_obj_clear_flag(h, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(h, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_size(h, ui_content_w(), UI_HEADER_H_PX);
+    lv_obj_align(h, LV_ALIGN_TOP_LEFT, 0, 0);
+    lv_obj_set_layout(h, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(h, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(h, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    make_slot(h, left);
+
+    lv_obj_t *t = lv_label_create(h);
+    lv_obj_add_style(t, ui_theme_get_style_text_primary(), 0);
+    lv_obj_set_style_text_font(t, font, 0);
+    lv_obj_set_style_text_align(t, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_flex_grow(t, 1);
+
+    make_slot(h, right);
+
+    /* Adaptive text needs the label's final width, so lay out first. */
+    lv_obj_update_layout(h);
+    ui_adaptive_text_set(t, title, HEADER_TITLE_MAX_LINES);
+    return h;
+}
+
+void header_set_title(lv_obj_t *header, const char *title)
+{
+    if (!header) return;
+    lv_obj_t *t = lv_obj_get_child(header, 1);   /* children: left slot, title, right slot */
+    const char *text = title ? title : "";
+    if (strcmp(lv_label_get_text(t), text) != 0)
+        ui_adaptive_text_set(t, text, HEADER_TITLE_MAX_LINES);
+}
+
+void header_set_right_visible(lv_obj_t *header, bool visible)
+{
+    if (!header) return;
+    lv_obj_t *slot = lv_obj_get_child(header, 2);   /* children: left slot, title, right slot */
+    if (!slot) return;
+    for (uint32_t i = 0; i < lv_obj_get_child_count(slot); i++) {
+        lv_obj_t *content = lv_obj_get_child(slot, i);
+        if (visible) lv_obj_remove_flag(content, LV_OBJ_FLAG_HIDDEN);
+        else         lv_obj_add_flag(content, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (visible) lv_obj_add_flag(slot, LV_OBJ_FLAG_CLICKABLE);
+    else         lv_obj_remove_flag(slot, LV_OBJ_FLAG_CLICKABLE);
+}
+
+/* Title moved up / subtitle placed so the pair sits above the home pane's pagination dots (UI_PAGINATION_TOP_PX). */
+#define HEADER_SUBTITLE_TITLE_SHIFT_PX (-9)
+#define HEADER_SUBTITLE_Y_PX           38
+
+void header_set_subtitle(lv_obj_t *header, const char *subtitle)
+{
+    if (!header) return;
+    lv_obj_t *title = lv_obj_get_child(header, 1);   /* children: left slot, title, right slot[, subtitle] */
+    lv_obj_t *label = lv_obj_get_child_count(header) > 3 ? lv_obj_get_child(header, 3) : nullptr;
+    const char *text = subtitle ? subtitle : "";
+
+    if (text[0] == '\0') {
+        if (label) lv_obj_delete(label);
+        lv_obj_set_style_translate_y(title, 0, 0);
+        return;
+    }
+    if (!label) {
+        label = lv_label_create(header);
+        lv_obj_add_flag(label, LV_OBJ_FLAG_IGNORE_LAYOUT);
+        lv_obj_add_style(label, ui_theme_get_style_text_secondary(), 0);
+        lv_obj_set_style_text_font(label, &satoshi_medium_14, 0);
+        lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_set_width(label, lv_obj_get_width(title));
+        lv_obj_set_pos(label, lv_obj_get_x(title), HEADER_SUBTITLE_Y_PX);
+        lv_label_set_long_mode(label, LV_LABEL_LONG_MODE_DOTS);
+        lv_obj_set_style_translate_y(title, HEADER_SUBTITLE_TITLE_SHIFT_PX, 0);
+    }
+    if (strcmp(lv_label_get_text(label), text) != 0)
+        lv_label_set_text(label, text);
+}
