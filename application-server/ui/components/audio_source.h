@@ -10,6 +10,7 @@
  *   trackTitle/trackArtist/trackAlbum   StringSensors, empty when there is no track
  *   trackDuration/trackPosition         UInt32Sensors, whole seconds; 0 when there is no track or the source does not say
  *   trackAlbumArt                      StringSensor, path of the album art file or empty
+ *   trackAlbumArtUrl                   StringSensor, URL the album art file was fetched from; empty when trackAlbumArt is
  *
  * Optional controls: a source supports a control (see the table in audio_source.cpp) when its leaf has the
  * control's element. A momentary control (next, previous) is set true and the source resets it; a toggle control

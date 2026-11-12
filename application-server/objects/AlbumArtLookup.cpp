@@ -238,6 +238,15 @@ std::string AlbumArtLookup::file() const
   return it == cache_.end() ? "" : it->second.file;
 }
 
+std::string AlbumArtLookup::url() const
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (wantedKey_.empty())
+    return "";
+  const auto it = cache_.find(wantedKey_);
+  return it == cache_.end() || it->second.file.empty() ? "" : it->second.url;
+}
+
 void AlbumArtLookup::store(const std::string &key, const Entry &entry)
 {
   const auto it = cache_.find(key);
@@ -297,8 +306,8 @@ void AlbumArtLookup::run()
 
     const Track track = wanted_;
     lock.unlock();
-    std::string file;
-    const Outcome outcome = this->lookup(track, file);
+    std::string file, url;
+    const Outcome outcome = this->lookup(track, file, url);
     lock.lock();
 
     if (stop_)
@@ -309,6 +318,7 @@ void AlbumArtLookup::run()
 
     Entry entry;
     entry.file = file;
+    entry.url = url;
     if (outcome == Outcome::Found)
       std::fprintf(stderr, "[albumart] %s - %s: %s\n", track.artist.c_str(), track.title.c_str(), file.c_str());
     else if (outcome == Outcome::NotFound)
@@ -351,7 +361,7 @@ bool AlbumArtLookup::search(const std::string &endpoint, const std::string &quer
 
 // Downloads the front cover of the first release that has one. transientFailure is set when a download failed in a way that
 // may not happen next time (network error, timeout, 5xx), as opposed to the release having no cover.
-std::string AlbumArtLookup::fetchFront(const std::vector<std::string> &releaseIds, std::vector<std::string> &tried, bool &transientFailure)
+std::string AlbumArtLookup::fetchFront(const std::vector<std::string> &releaseIds, std::vector<std::string> &tried, bool &transientFailure, std::string &url)
 {
   size_t downloads = 0;
   for (const std::string &id : releaseIds)
@@ -363,16 +373,20 @@ std::string AlbumArtLookup::fetchFront(const std::vector<std::string> &releaseId
     tried.push_back(id);
     ++downloads;
     bool transient = false;
-    const std::string file = AlbumArtFiles::download("bluetooth", "https://coverartarchive.org/release/" + id + "/front-500", USER_AGENT, &transient);
+    const std::string frontUrl = "https://coverartarchive.org/release/" + id + "/front-500";
+    const std::string file = AlbumArtFiles::download("bluetooth", frontUrl, USER_AGENT, &transient);
     if (!file.empty())
+    {
+      url = frontUrl;
       return file;
+    }
     if (transient)
       transientFailure = true;
   }
   return "";
 }
 
-AlbumArtLookup::Outcome AlbumArtLookup::lookup(const Track &tagged, std::string &file)
+AlbumArtLookup::Outcome AlbumArtLookup::lookup(const Track &tagged, std::string &file, std::string &url)
 {
   const Track track{mainArtist(tagged.artist), withoutBrackets(tagged.album), withoutBrackets(tagged.title)};
   std::vector<std::string> tried;
@@ -386,7 +400,7 @@ AlbumArtLookup::Outcome AlbumArtLookup::lookup(const Track &tagged, std::string 
     const json answer = json::parse(body, nullptr, false);
     if (!answer.is_discarded())
     {
-      file = fetchFront(releaseIds(answer), tried, transientFailure);
+      file = fetchFront(releaseIds(answer), tried, transientFailure, url);
       if (!file.empty())
         return Outcome::Found;
     }
@@ -400,7 +414,7 @@ AlbumArtLookup::Outcome AlbumArtLookup::lookup(const Track &tagged, std::string 
   const json answer = json::parse(body, nullptr, false);
   if (answer.is_discarded())
     return Outcome::Error;
-  file = fetchFront(recordingReleaseIds(answer), tried, transientFailure);
+  file = fetchFront(recordingReleaseIds(answer), tried, transientFailure, url);
   if (!file.empty())
     return Outcome::Found;
   // A cover that could not be downloaded for a reason that may pass is retried soon, not after the not-found wait.

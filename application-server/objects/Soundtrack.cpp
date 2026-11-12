@@ -49,6 +49,8 @@ Soundtrack::Soundtrack(string path, Object *parent)
   name = "trackArtist"; elements[name] = trackArtistPtr = std::make_shared<StringSensor>(path + "/" + name, this, "", 128);
   name = "trackAlbum"; elements[name] = trackAlbumPtr = std::make_shared<StringSensor>(path + "/" + name, this, "", 128);
   name = "trackAlbumArt"; elements[name] = trackAlbumArtPtr = std::make_shared<StringSensor>(path + "/" + name, this, "", 64);
+  // URL (on the Soundtrack CDN) the trackAlbumArt image was fetched from; empty whenever trackAlbumArt is
+  name = "trackAlbumArtUrl"; elements[name] = trackAlbumArtUrlPtr = std::make_shared<StringSensor>(path + "/" + name, this, "", 1024);
   // Length of the current track and how far into it playback is, in whole seconds; 0 when there is no track
   name = "trackDuration"; elements[name] = trackDurationPtr = std::make_shared<UInt32Sensor>(path + "/" + name, this, 0, __UINT32_MAX__, 0, "s");
   name = "trackPosition"; elements[name] = trackPositionPtr = std::make_shared<UInt32Sensor>(path + "/" + name, this, 0, __UINT32_MAX__, 0, "s");
@@ -579,6 +581,7 @@ void Soundtrack::syncMetadata()
     AlbumArtFiles::remove(albumArtFile);
     albumArtFile.clear();
     trackAlbumArtPtr->set("");
+    trackAlbumArtUrlPtr->set("");
   }
   syncAlbumArt();
 }
@@ -600,6 +603,7 @@ void Soundtrack::syncAlbumArt()
       albumArtPending = false;
       albumArtFile = file;
       trackAlbumArtPtr->set(file);
+      trackAlbumArtUrlPtr->set(albumArtDownloadUri);
     }
     else
     {
@@ -627,6 +631,7 @@ void Soundtrack::clearTrack()
   trackDurationPtr->set(0);
   trackPositionPtr->set(0);
   trackAlbumArtPtr->set("");
+  trackAlbumArtUrlPtr->set("");
   currentTrackPtr->set(json::object());
   AlbumArtFiles::remove(albumArtFile);
   albumArtFile.clear();

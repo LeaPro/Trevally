@@ -32,6 +32,9 @@ public:
   // is different for every image.
   std::string file() const;
 
+  // URL file() was downloaded from (a Cover Art Archive URL); empty when file() is.
+  std::string url() const;
+
 private:
   using Clock = std::chrono::steady_clock;
   struct Track
@@ -41,14 +44,15 @@ private:
   struct Entry
   {
     std::string file;          // empty: nothing found
+    std::string url;           // where file was downloaded from
     Clock::time_point retryAt; // when to look up a track again that has no file
   };
   enum class Outcome { Found, NotFound, Error };
 
   void run();
-  Outcome lookup(const Track &track, std::string &file);
+  Outcome lookup(const Track &track, std::string &file, std::string &url);
   bool search(const std::string &endpoint, const std::string &query, std::string &body); // false: no usable answer
-  std::string fetchFront(const std::vector<std::string> &releaseIds, std::vector<std::string> &tried, bool &transientFailure);
+  std::string fetchFront(const std::vector<std::string> &releaseIds, std::vector<std::string> &tried, bool &transientFailure, std::string &url);
   void store(const std::string &key, const Entry &entry); // mutex_ held
 
   std::thread thread_;

@@ -100,6 +100,7 @@ private:
   std::shared_ptr<StringSensor> trackArtistPtr;
   std::shared_ptr<StringSensor> trackAlbumPtr;
   std::shared_ptr<StringSensor> trackAlbumArtPtr;
+  std::shared_ptr<StringSensor> trackAlbumArtUrlPtr;
   std::shared_ptr<BoolSensor> isPlayingPtr;
   std::shared_ptr<BoolSensor> websiteReachablePtr;
   std::shared_ptr<BoolControl> enabledPtr;
@@ -148,10 +149,12 @@ private:
   struct AlbumArtDownload
   {
     std::string url;  // what was requested
+    std::string fetchedUrl; // what file was downloaded from: url, or the fallback when url failed
     std::string file; // downloaded file; empty on failure
   };
   std::future<AlbumArtDownload> albumArtDownload;
   std::string albumArtShownUrl;  // URL the published trackAlbumArt file belongs to
+  std::string albumArtShownFetchedUrl; // URL the published trackAlbumArt file was downloaded from (published as trackAlbumArtUrl)
   std::string albumArtShownFile;
   std::chrono::steady_clock::time_point albumArtRetryAt{};
   mutable std::mutex workerMutex;

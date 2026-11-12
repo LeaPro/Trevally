@@ -74,6 +74,7 @@ private:
   std::shared_ptr<UInt32Sensor> trackDurationPtr;
   std::shared_ptr<UInt32Sensor> trackPositionPtr;
   std::shared_ptr<StringSensor> trackAlbumArtPtr;
+  std::shared_ptr<StringSensor> trackAlbumArtUrlPtr;
   std::shared_ptr<JsonSensor> libraryPtr;
   std::shared_ptr<JsonSensor> troublesPtr;
   std::shared_ptr<StringSensor> lastErrorPtr;

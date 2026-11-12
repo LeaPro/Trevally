@@ -216,6 +216,8 @@ CustomChannels::CustomChannels(string path, Object *parent)
   name = "trackDuration"; elements[name] = std::make_shared<UInt32Sensor>(path + "/" + name, this, 0, __UINT32_MAX__, 0, "s");
   name = "trackPosition"; elements[name] = std::make_shared<UInt32Sensor>(path + "/" + name, this, 0, __UINT32_MAX__, 0, "s");
   name = "trackAlbumArt"; elements[name] = trackAlbumArtPtr = std::make_shared<StringSensor>(path + "/" + name, this, "", 64);
+  // URL the trackAlbumArt image was fetched from (albumart_large, or albumart_small when that is what was downloaded); empty whenever trackAlbumArt is
+  name = "trackAlbumArtUrl"; elements[name] = trackAlbumArtUrlPtr = std::make_shared<StringSensor>(path + "/" + name, this, "", 1024);
   name = "isPlaying"; elements[name] = isPlayingPtr = std::make_shared<BoolSensor>(path + "/" + name, this, false);
   name = "play"; elements[name] = playPtr = std::make_shared<BoolControl>(path + "/" + name, this, false, true, true);
   name = "next"; elements[name] = nextPtr = std::make_shared<BoolControl>(path + "/" + name, this, false, false, true);
@@ -841,10 +843,13 @@ void CustomChannels::startAlbumArtDownload(const std::string &url, const std::st
   albumArtDownload = std::async(std::launch::async, [url, fallbackUrl]() {
     AlbumArtDownload r;
     r.url = url;
+    r.fetchedUrl = url;
     r.file = AlbumArtFiles::download("customChannels", url);
     // the server does not have every size for every album
-    if (r.file.empty() && !fallbackUrl.empty() && fallbackUrl != url)
+    if (r.file.empty() && !fallbackUrl.empty() && fallbackUrl != url) {
+      r.fetchedUrl = fallbackUrl;
       r.file = AlbumArtFiles::download("customChannels", fallbackUrl);
+    }
     return r;
   });
 }
@@ -873,6 +878,7 @@ void CustomChannels::syncTrackElements()
     if (r.url == url && !r.file.empty()) {
       AlbumArtFiles::remove(albumArtShownFile);
       albumArtShownUrl = r.url;
+      albumArtShownFetchedUrl = r.fetchedUrl;
       albumArtShownFile = r.file;
     } else {
       AlbumArtFiles::remove(r.file);
@@ -886,11 +892,13 @@ void CustomChannels::syncTrackElements()
     AlbumArtFiles::remove(albumArtShownFile);
     albumArtShownFile.clear();
     albumArtShownUrl.clear();
+    albumArtShownFetchedUrl.clear();
   } else if (!albumArtDownload.valid() && url != albumArtShownUrl && Clock::now() >= albumArtRetryAt) {
     startAlbumArtDownload(url, fallbackUrl);
   }
 
   trackAlbumArtPtr->set(albumArtShownFile);
+  trackAlbumArtUrlPtr->set(albumArtShownFetchedUrl);
 }
 
 void CustomChannels::update(bool sensorsOnly, bool refreshVolatileElements)

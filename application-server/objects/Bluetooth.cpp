@@ -180,6 +180,8 @@ Bluetooth::Bluetooth(std::string path, Object *parent) : LeafObject(path, parent
   // trackAlbumArt: path of the album art file (a PNG of at most 500 px) of the current track, looked up on MusicBrainz / Cover Art
   // Archive; empty when nothing is connected or the album art is unknown or hasn't arrived yet. The file name changes with every new image.
   name = "trackAlbumArt"; elements[name] = trackAlbumArtPtr = std::make_shared<StringSensor>(path + "/" + name, this, ""/*default*/, 64/*maxLength*/);
+  // trackAlbumArtUrl: Cover Art Archive URL the trackAlbumArt image was fetched from; empty whenever trackAlbumArt is
+  name = "trackAlbumArtUrl"; elements[name] = trackAlbumArtUrlPtr = std::make_shared<StringSensor>(path + "/" + name, this, ""/*default*/, 1024/*maxLength*/);
   // Length of the current track and how far the phone is into it, in whole seconds; 0 when nothing is playing or the phone does not say
   name = "trackDuration"; elements[name] = trackDurationPtr = std::make_shared<UInt32Sensor>(path + "/" + name, this, 0, __UINT32_MAX__, 0/*default*/, "s");
   name = "trackPosition"; elements[name] = trackPositionPtr = std::make_shared<UInt32Sensor>(path + "/" + name, this, 0, __UINT32_MAX__, 0/*default*/, "s");
@@ -415,6 +417,7 @@ void Bluetooth::updateAlbumArt()
   else
     albumArt_.request("", "", "");
   trackAlbumArtPtr->set(albumArt_.file());
+  trackAlbumArtUrlPtr->set(albumArt_.url());
 }
 
 // isPlaying reports the phone's player status; play is the request to it and follows the phone's state (like syncVolume())

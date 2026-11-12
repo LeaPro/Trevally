@@ -173,6 +173,7 @@ private:
   std::shared_ptr<StringSensor> trackArtistPtr;
   std::shared_ptr<StringSensor> trackAlbumPtr;
   std::shared_ptr<StringSensor> trackAlbumArtPtr;
+  std::shared_ptr<StringSensor> trackAlbumArtUrlPtr;
   std::shared_ptr<UInt32Sensor> trackDurationPtr;
   std::shared_ptr<UInt32Sensor> trackPositionPtr;
   std::shared_ptr<BoolControl> enablePtr;
