@@ -25,6 +25,7 @@
 #include <string.h>
 
 #define FONT_PICKER_WHEEL &satoshi_medium_24
+#define FONT_PICKER_SUBTITLE &satoshi_medium_20
 
 // Layout dimensions (using design tokens where applicable)
 // Figma Node 5609:12037 specifies a 480x463px container in portrait. The width
@@ -58,6 +59,7 @@ typedef struct {
     lv_obj_t** accessory_objs;
     int touch_pressed_index;
     bool external_press_active;
+    bool rebuilding;   // picker_wheel_set_items() is replacing the rows: their scroll events aren't the user's
 } picker_wheel_data_t;
 
 // Forward declarations
@@ -124,6 +126,7 @@ lv_obj_t* picker_wheel_create(lv_obj_t* parent, const picker_wheel_props_t* prop
     data->accessory_objs = NULL;
     data->touch_pressed_index = -1;
     data->external_press_active = false;
+    data->rebuilding = false;
     
     // Copy items array
     data->items_copy = (picker_wheel_item_t*)malloc(sizeof(picker_wheel_item_t) * props->item_count);
@@ -270,6 +273,9 @@ bool picker_wheel_set_items(lv_obj_t* picker, const picker_wheel_item_t* items,
                                : selected_index >= item_count ? item_count - 1 : selected_index;
     data->touch_pressed_index = -1;
 
+    /* Emptying the scroll area scrolls it back to the top; without this its scroll event would take the top row
+     * as the selection (and report it as a change) instead of selected_index. */
+    data->rebuilding = true;
     lv_obj_clean(data->scroll_area);
     add_scroll_spacer(data->scroll_area);
     for (int i = 0; i < item_count; i++) {
@@ -279,6 +285,7 @@ bool picker_wheel_set_items(lv_obj_t* picker, const picker_wheel_item_t* items,
 
     lv_obj_update_layout(data->scroll_area);
     scroll_to_index(data, data->props.selected_index, false);
+    data->rebuilding = false;
     refresh_all_item_visuals(data);
     refresh_highlight_box_color(data);
     return true;
@@ -382,6 +389,9 @@ static void refresh_item_visuals(picker_wheel_data_t* data, int index, bool sele
 
     if (data->primary_labels[index]) {
         lv_obj_set_style_text_color(data->primary_labels[index], primary_color, 0);
+        /* the subtitle (if any) hangs off its primary label's user data, see create_picker_item() */
+        lv_obj_t* subtitle = (lv_obj_t*)lv_obj_get_user_data(data->primary_labels[index]);
+        if (subtitle) lv_obj_set_style_text_color(subtitle, secondary_color, 0);
     }
 
     if (data->secondary_labels[index]) {
@@ -531,7 +541,9 @@ static void create_picker_item(lv_obj_t* parent, picker_wheel_data_t* data, int 
     }
 
     if (has_secondary) {
-        primary_width = text_width / 2;
+        /* a two-line row's left side needs more room than a short value on the right */
+        const bool has_subtitle_text = item->subtitle_text && item->subtitle_text[0] != '\0';
+        primary_width = has_subtitle_text ? text_width * 2 / 3 : text_width / 2;
         secondary_x = text_x + primary_width;
         secondary_width = text_width - primary_width;
         if (!left) {
@@ -568,7 +580,24 @@ static void create_picker_item(lv_obj_t* parent, picker_wheel_data_t* data, int 
     lv_obj_set_style_text_font(primary, FONT_PICKER_WHEEL, 0);
     lv_obj_set_style_text_align(primary, normalize_text_align(item->primary_text_align), 0);
     ui_adaptive_text_set(primary, item->primary_text ? item->primary_text : "", 1);   // marquee when it doesn't fit
-    lv_obj_align(primary, LV_ALIGN_LEFT_MID, text_x, 0);
+    const bool has_subtitle = item->subtitle_text && item->subtitle_text[0] != '\0';
+    if (has_subtitle) {
+        /* two lines: primary above, subtitle below, the pair centred in the row */
+        const int primary_h = lv_font_get_line_height(FONT_PICKER_WHEEL);
+        const int subtitle_h = lv_font_get_line_height(FONT_PICKER_SUBTITLE);
+        const int top = (ITEM_HEIGHT - primary_h - subtitle_h) / 2;
+        lv_obj_align(primary, LV_ALIGN_TOP_LEFT, text_x, top);
+
+        lv_obj_t* subtitle = lv_label_create(row);
+        lv_obj_set_width(subtitle, primary_width);
+        lv_obj_set_style_text_font(subtitle, FONT_PICKER_SUBTITLE, 0);
+        lv_obj_set_style_text_align(subtitle, normalize_text_align(item->primary_text_align), 0);
+        ui_adaptive_text_set(subtitle, item->subtitle_text, 1);
+        lv_obj_align(subtitle, LV_ALIGN_TOP_LEFT, text_x, top + primary_h);
+        lv_obj_set_user_data(primary, subtitle);
+    } else {
+        lv_obj_align(primary, LV_ALIGN_LEFT_MID, text_x, 0);
+    }
 
     lv_obj_t* secondary = NULL;
     if (has_secondary) {
@@ -607,7 +636,7 @@ static void create_fade(lv_obj_t* parent, bool top) {
  */
 static void picker_wheel_scroll_cb(lv_event_t* e) {
     picker_wheel_data_t* data = (picker_wheel_data_t*)lv_event_get_user_data(e);
-    if (!data) return;
+    if (!data || data->rebuilding) return;
 
     set_selected_index(data, get_selected_index_from_scroll(data), true);
 }
@@ -725,4 +754,21 @@ static void theme_changed_cb(lv_event_t* e) {
 
     refresh_all_item_visuals(data);
     refresh_highlight_box_color(data);
+}
+
+static void encoder_key_cb(lv_event_t* e) {
+    lv_obj_t* picker = (lv_obj_t*)lv_event_get_user_data(e);
+    const uint32_t key = lv_event_get_key(e);
+    if (key == LV_KEY_RIGHT)     picker_wheel_nudge(picker, 1, false);
+    else if (key == LV_KEY_LEFT) picker_wheel_nudge(picker, -1, false);
+}
+
+static void encoder_click_cb(lv_event_t* e) {
+    picker_wheel_click((lv_obj_t*)lv_event_get_user_data(e));
+}
+
+void picker_wheel_attach_encoder(lv_obj_t* picker, lv_obj_t* focus) {
+    if (!picker || !focus) return;
+    lv_obj_add_event_cb(focus, encoder_key_cb, LV_EVENT_KEY, picker);
+    lv_obj_add_event_cb(focus, encoder_click_cb, LV_EVENT_CLICKED, picker);
 }

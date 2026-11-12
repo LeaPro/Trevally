@@ -59,7 +59,11 @@
 #define LEVEL_GAUGE_FLOATING_LAND_RADIUS 170
 
 /** Returns the arc. @p leafPath / @p elementName select the numeric element.
- *  The look is selected by the Appearance "levelGaugeStyle" element. */
-lv_obj_t *level_gauge_create(lv_obj_t *parent, const std::string &leafPath, const char *elementName);
+ *  The look is selected by the Appearance "levelGaugeStyle" element.
+ *  @p faderUnits: the element is an amp fader in dB (-80..0, see AmpFader.h), shown in the Appearance "volumeUnits"
+ *  (see fader_units.h). Its labels follow the element and the units live, and read "-" while the element doesn't
+ *  exist or doesn't know its value. */
+lv_obj_t *level_gauge_create(lv_obj_t *parent, const std::string &leafPath, const char *elementName,
+                             bool faderUnits = false);
 
 #endif /* LEVEL_GAUGE_H */

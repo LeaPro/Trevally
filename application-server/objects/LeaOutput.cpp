@@ -25,18 +25,17 @@ LeaOutput::LeaOutput(string path, Object *parent) : LeafObject(path, parent)
 {
   methods.insert({"add", "update", "remove"});
   string name;
-  name = "config"; elements[name] = std::make_shared<JsonControl>(path + "/" + name, this, json::object());
+  name = "config"; elements[name] = configPtr = std::make_shared<JsonControl>(path + "/" + name, this, json::object());
 }
 
 void LeaOutput::update(bool sensorsOnly, bool refreshVolatileElements)
 {
   if (sensorsOnly)
     return;
-  auto config = std::dynamic_pointer_cast<JsonControl>(elements["config"]);
   auto faders = std::dynamic_pointer_cast<OutputFaders>(getRoot()->leafFromPath("/outputFaders"));
-  if (!config || !faders)
+  if (!faders)
     return;
-  json current = config->get();
+  json current = configPtr->get();
   if (current == appliedConfig)
     return;
   appliedConfig = current;

@@ -133,6 +133,7 @@ int main(int argc, char *argv[])
     root->addLeaf<LeaOutput>("/leaOutput");
     root->addLeaf<OutputFaders>("/outputFaders");
     root->addLeaf<LeaInput>("/leaInput");
+    root->addLeaf<InputFaders>("/inputFaders");
     root->addLeaf<LeaControl>("/leaControl");
     root->addLeaf<LeaSensor>("/leaSensor");
     root->addLeaf<Appearance>("/appearance");

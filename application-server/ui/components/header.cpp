@@ -73,3 +73,17 @@ void header_set_title(lv_obj_t *header, const char *title)
     if (strcmp(lv_label_get_text(t), text) != 0)
         ui_adaptive_text_set(t, text, HEADER_TITLE_MAX_LINES);
 }
+
+void header_set_right_visible(lv_obj_t *header, bool visible)
+{
+    if (!header) return;
+    lv_obj_t *slot = lv_obj_get_child(header, 2);   /* children: left slot, title, right slot */
+    if (!slot) return;
+    for (uint32_t i = 0; i < lv_obj_get_child_count(slot); i++) {
+        lv_obj_t *content = lv_obj_get_child(slot, i);
+        if (visible) lv_obj_remove_flag(content, LV_OBJ_FLAG_HIDDEN);
+        else         lv_obj_add_flag(content, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (visible) lv_obj_add_flag(slot, LV_OBJ_FLAG_CLICKABLE);
+    else         lv_obj_remove_flag(slot, LV_OBJ_FLAG_CLICKABLE);
+}

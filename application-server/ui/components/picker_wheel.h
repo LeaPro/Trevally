@@ -44,6 +44,7 @@ typedef struct {
     lv_color_t border_color;                    // Border color when border_width > 0
     void (*callback)(void*);                    // Callback when item is selected
     void* user_data;                            // User data passed to callback
+    const char* subtitle_text;                  // Optional smaller line under the primary text
 } picker_wheel_item_t;
 
 /**
@@ -129,5 +130,10 @@ bool picker_wheel_set_items(lv_obj_t* picker, const picker_wheel_item_t* items,
 void picker_wheel_click(lv_obj_t* picker);
 
 void picker_wheel_set_press_active(lv_obj_t* picker, bool active);
+/**
+ * @brief Lets the encoder drive @p picker from its page's @p focus object (see nav.h): rotation moves the
+ *        selection one row, a press activates the selected row (like picker_wheel_click()).
+ */
+void picker_wheel_attach_encoder(lv_obj_t* picker, lv_obj_t* focus);
 
 #endif // PICKER_WHEEL_H

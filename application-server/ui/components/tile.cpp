@@ -60,6 +60,7 @@ static void tile_clicked_cb(lv_event_t *e)
         case BLUETOOTH: tile_bluetooth_volume_open(t.name, t.binding); break;
         case STREAMING: tile_streaming_volume_open(t.name, t.binding, t.id); break;
         case OUTPUT_VOLUME: tile_output_volume_open(t.name, t.binding); break;
+        case INPUT: tile_input_open(t.name, t.binding); break;
         default: break;
         }
         return;
@@ -101,7 +102,7 @@ lv_obj_t *tile_create(lv_obj_t *parent, tile_type_t type, const std::string &id,
     tile_remove_from_group(tile);
 
     /* Types that have a page open it when tapped. */
-    if (type == BLUETOOTH || type == STREAMING || type == OUTPUT_VOLUME) {
+    if (type == BLUETOOTH || type == STREAMING || type == OUTPUT_VOLUME || type == INPUT) {
         lv_obj_add_flag(tile, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_add_event_cb(tile, tile_clicked_cb, LV_EVENT_CLICKED, NULL);
         tileTaps.push_back({tile, lv_obj_get_screen(tile), type, id, name, binding});

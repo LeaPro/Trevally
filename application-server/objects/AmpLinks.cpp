@@ -1,4 +1,5 @@
 #include "AmpLinks.h"
+#include "Discovery.h"
 
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/post.hpp>
@@ -95,6 +96,7 @@ struct AmpLinks::Link : std::enable_shared_from_this<AmpLinks::Link>
   State state = State::Connecting;
   uint64_t generation = 0; // bumped per connection attempt; handlers from older attempts do nothing
   bool reportedDown = false; // log the first failure only, not every retry
+  bool waitingToRetry = false; // between a failure and the retry timer firing (see AmpLinks::discoveryChanged())
   std::shared_ptr<Conn> conn;
   std::deque<Msg> writeQueue;
   bool writing = false;
@@ -111,10 +113,14 @@ struct AmpLinks::Link : std::enable_shared_from_this<AmpLinks::Link>
     if (state == State::Closed)
       return;
     state = State::Connecting;
+    waitingToRetry = false;
     const uint64_t gen = ++generation;
     const string ip = ipForMac(mac);
     if (ip.empty())
+    {
+      AmpLinks::instance().requestAnnouncements();
       return retry(gen, "not discovered yet");
+    }
     boost::system::error_code ec;
     auto address = net::ip::make_address(ip, ec);
     if (ec)
@@ -168,6 +174,8 @@ struct AmpLinks::Link : std::enable_shared_from_this<AmpLinks::Link>
   {
     if (gen != generation || state == State::Closed)
       return;
+    if (state == State::Open)
+      AmpLinks::instance().resetAnnouncementBackoff(); // it may come back elsewhere: ask promptly if it does
     if (!reportedDown)
       fprintf(stderr, "%s.%d(%s): amp %s: %s; retrying every %ld s\n", __FILE__, __LINE__, __func__, mac.c_str(), why.c_str(),
               (long)std::chrono::duration_cast<std::chrono::seconds>(retryDelay).count());
@@ -175,6 +183,7 @@ struct AmpLinks::Link : std::enable_shared_from_this<AmpLinks::Link>
     const uint64_t retryGen = ++generation; // the failed attempt's other handlers now do nothing
     teardown();
     state = State::Connecting;
+    waitingToRetry = true;
     auto self = shared_from_this();
     retryTimer.expires_after(retryDelay);
     retryTimer.async_wait([self, retryGen](boost::system::error_code ec) {
@@ -373,6 +382,7 @@ std::shared_ptr<AmpLinks::Link> AmpLinks::acquire(const string &mac)
   auto &link = links[mac];
   if (!link)
   {
+    resetAnnouncementBackoff(); // a newly wanted amp may need asking for
     link = std::make_shared<Link>(mac);
     link->connect();
   }
@@ -416,6 +426,18 @@ AmpLinks::Handle AmpLinks::subscribe(const string &mac, const string &leafUrl, L
   return Handle(key, leafUrl, id);
 }
 
+json AmpLinks::value(const string &mac, const string &leafUrl, const string &element) const
+{
+  auto link = links.find(normalizeMac(mac));
+  if (link == links.end())
+    return nullptr;
+  auto state = link->second->leafState.find(leafUrl);
+  if (state == link->second->leafState.end() || !state->second.is_object())
+    return nullptr;
+  auto it = state->second.find(element);
+  return it != state->second.end() ? *it : json(nullptr);
+}
+
 void AmpLinks::set(const string &mac, const string &leafUrl, const json &elements)
 {
   auto it = links.find(normalizeMac(mac));
@@ -437,6 +459,14 @@ void AmpLinks::set(const string &mac, const string &leafUrl, const json &element
     for (auto e = elements.begin(); e != elements.end(); ++e)
       pending[e.key()] = e.value();
   }
+}
+
+void AmpLinks::bump(const string &mac, const string &leafUrl, const json &elements)
+{
+  auto it = links.find(normalizeMac(mac));
+  if (it == links.end() || it->second->state != Link::State::Open)
+    return;
+  it->second->write(Link::request(leafUrl, "bump", elements));
 }
 
 void AmpLinks::release(const Handle &handle)
@@ -487,4 +517,44 @@ void AmpLinks::Handle::reset()
     return;
   active = false;
   AmpLinks::instance().release(*this);
+}
+
+void AmpLinks::discoveryChanged()
+{
+  std::vector<std::shared_ptr<Link>> waiting;
+  for (const auto &[mac, link] : links)
+    if (link->waitingToRetry)
+      waiting.push_back(link);
+  for (const auto &link : waiting)
+  {
+    link->retryTimer.cancel();
+    link->connect(); // a new generation: the cancelled timer's handler does nothing
+  }
+}
+
+void AmpLinks::requestAnnouncements()
+{
+  static const std::chrono::seconds steps[] = {std::chrono::seconds(5), std::chrono::seconds(15),
+                                               std::chrono::seconds(60), std::chrono::seconds(300)};
+  const auto now = std::chrono::steady_clock::now();
+  if (now < nextAnnouncementRequest)
+    return;
+  auto discovery = root ? std::dynamic_pointer_cast<Discovery>(root->leafFromPath("/discovery")) : nullptr;
+  if (!discovery)
+    return;
+  const auto wait = steps[std::min(announcementStep, std::size(steps) - 1)];
+  fprintf(stderr, "%s.%d(%s): an amp isn't discovered yet; asking devices to announce themselves (next in %ld s at the earliest)\n",
+          __FILE__, __LINE__, __func__, (long)wait.count());
+  discovery->requestAnnouncements();
+  lastAnnouncementRequest = now;
+  nextAnnouncementRequest = now + wait;
+  if (announcementStep + 1 < std::size(steps))
+    announcementStep++;
+}
+
+void AmpLinks::resetAnnouncementBackoff()
+{
+  // start over; a request from the last 5 s already covers every amp (e.g. at boot each new link resets this)
+  announcementStep = 0;
+  nextAnnouncementRequest = lastAnnouncementRequest + std::chrono::seconds(5);
 }

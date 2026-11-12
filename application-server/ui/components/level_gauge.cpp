@@ -4,10 +4,12 @@
  */
 
 #include "level_gauge.h"
+#include "fader_units.h"
 #include "tile.h"
 #include "../ui_design_tokens.h"
 
 #include <math.h>
+#include <memory>
 #include <object.h>
 
 /* The device's root object (defined in main.cpp). */
@@ -139,7 +141,7 @@ static void place(lv_obj_t *obj, const Spot &s)
         lv_obj_align(obj, LV_ALIGN_CENTER, s.x - midX, s.y - midY);
 }
 
-lv_obj_t *level_gauge_create(lv_obj_t *parent, const std::string &leafPath, const char *elementName)
+lv_obj_t *level_gauge_create(lv_obj_t *parent, const std::string &leafPath, const char *elementName, bool faderUnits)
 {
     const TileNumber n = tile_read_number(leafPath, elementName);
 
@@ -164,6 +166,39 @@ lv_obj_t *level_gauge_create(lv_obj_t *parent, const std::string &leafPath, cons
     lv_obj_add_style(arc, ui_theme_get_style_brand(), LV_PART_INDICATOR);
     lv_obj_set_style_arc_width(arc, LEVEL_GAUGE_ARC_W, LV_PART_INDICATOR);
     lv_obj_set_style_arc_rounded(arc, true, LV_PART_INDICATOR);
+
+    if (faderUnits)
+    {
+        /* Labels from fader_display(); re-read every tick, so they follow the element (which may come and go with
+         * the config) and the volume units. The arc fill is the same in dB and %: both are linear over -80..0 dB. */
+        lv_obj_t *number   = tile_label(parent, "-", &satoshi_medium_140, ui_theme_get_style_text_primary());
+        lv_obj_t *units    = tile_label(parent, "", &satoshi_medium_32, ui_theme_get_style_text_secondary());
+        lv_obj_t *minLabel = tile_label(parent, "", &satoshi_medium_24, ui_theme_get_style_text_secondary());
+        lv_obj_t *maxLabel = tile_label(parent, "", &satoshi_medium_24, ui_theme_get_style_text_secondary());
+        place(number, L.number);
+        place(units, L.units);
+        place(minLabel, L.minLabel);
+        place(maxLabel, L.maxLabel);
+        const std::string element = elementName ? elementName : "";
+        auto shown = std::make_shared<FaderDisplay>();
+        shown->number = "?";   /* differs from anything real: the first refresh sets every label */
+        auto refresh = [=]() {
+            const float dB = fader_read_db(leafPath, element);
+            FaderDisplay d = fader_display(dB);
+            if (std::isnan(dB)) d.units = d.min = d.max = "";   /* no element / value yet: just "-" */
+            if (d == *shown) return;
+            *shown = d;
+            lv_label_set_text(number, d.number.c_str());
+            lv_label_set_text(units, d.units.c_str());
+            lv_label_set_text(minLabel, d.min.c_str());
+            lv_label_set_text(maxLabel, d.max.c_str());
+            const float fill = std::isnan(dB) ? 0.0f : fminf(fmaxf((dB + 80.0f) / 80.0f, 0.0f), 1.0f);
+            lv_arc_set_value(arc, (int32_t)(fill * 1000.0f));
+        };
+        refresh();
+        tile_bind_update(number, refresh);
+        return arc;
+    }
 
     /* Value label and units, positioned per style (see level_gauge.h). With no element (an empty leafPath: an unbound
      * streaming page) the value reads "-" and there are no other labels. */

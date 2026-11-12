@@ -179,19 +179,6 @@ static void view_delete_cb(lv_event_t *e)
     delete static_cast<std::shared_ptr<SourcesView> *>(lv_event_get_user_data(e));
 }
 
-static void page_key_cb(lv_event_t *e)
-{
-    lv_obj_t *picker = (lv_obj_t *)lv_event_get_user_data(e);
-    const uint32_t key = lv_event_get_key(e);
-    if (key == LV_KEY_RIGHT)     picker_wheel_nudge(picker, 1, false);
-    else if (key == LV_KEY_LEFT) picker_wheel_nudge(picker, -1, false);
-}
-
-static void page_click_cb(lv_event_t *e)
-{
-    picker_wheel_click(static_cast<lv_obj_t *>(lv_event_get_user_data(e)));
-}
-
 static void sources_page_open(bool streamingOnly)
 {
     auto view = std::make_shared<SourcesView>();
@@ -222,8 +209,7 @@ static void sources_page_open(bool streamingOnly)
 
     tile_bind_update(picker, [view]() { refresh_view(*view); });
 
-    lv_obj_add_event_cb(page.focus, page_key_cb, LV_EVENT_KEY, picker);
-    lv_obj_add_event_cb(page.focus, page_click_cb, LV_EVENT_CLICKED, picker);
+    picker_wheel_attach_encoder(picker, page.focus);
     nav_push(page);
 }
 

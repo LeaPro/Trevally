@@ -273,14 +273,6 @@ static void refresh_devices_view(DevicesView &v)
     picker_wheel_set_items(v.picker, items.data(), (int)items.size(), newSelected);
 }
 
-static void devices_page_key_cb(lv_event_t *e)
-{
-    lv_obj_t *picker = (lv_obj_t *)lv_event_get_user_data(e);
-    const uint32_t key = lv_event_get_key(e);
-    if (key == LV_KEY_RIGHT)     picker_wheel_nudge(picker, 1, false);
-    else if (key == LV_KEY_LEFT) picker_wheel_nudge(picker, -1, false);
-}
-
 /* ---- Forget Device page ---- */
 
 struct ForgetCtx
@@ -557,12 +549,6 @@ static void devices_view_delete_cb(lv_event_t *e)
     delete static_cast<std::shared_ptr<DevicesView> *>(lv_event_get_user_data(e));
 }
 
-/* Encoder press on a devices page activates the selected row. */
-static void devices_page_click_cb(lv_event_t *e)
-{
-    picker_wheel_click(static_cast<lv_obj_t *>(lv_event_get_user_data(e)));
-}
-
 /* Scanning lasts as long as the Discover page is open (back, choosing a device, or any other way out). */
 static void discover_stop_scan_cb(lv_event_t *)
 {
@@ -635,8 +621,7 @@ static void bluetooth_devices_open(DevicesMode mode)
     }
     tile_bind_update(picker, [view]() { refresh_devices_view(*view); });
 
-    lv_obj_add_event_cb(page.focus, devices_page_key_cb, LV_EVENT_KEY, picker);
-    lv_obj_add_event_cb(page.focus, devices_page_click_cb, LV_EVENT_CLICKED, picker);
+    picker_wheel_attach_encoder(picker, page.focus);
     if (mode == DevicesMode::Discover)
     {
         lv_obj_add_event_cb(page.screen, discover_stop_scan_cb, LV_EVENT_SCREEN_UNLOAD_START, nullptr);

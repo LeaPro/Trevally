@@ -205,19 +205,6 @@ static void services_view_delete_cb(lv_event_t *e)
     delete static_cast<std::shared_ptr<ServicesView> *>(lv_event_get_user_data(e));
 }
 
-static void services_page_key_cb(lv_event_t *e)
-{
-    lv_obj_t *picker = (lv_obj_t *)lv_event_get_user_data(e);
-    const uint32_t key = lv_event_get_key(e);
-    if (key == LV_KEY_RIGHT)     picker_wheel_nudge(picker, 1, false);
-    else if (key == LV_KEY_LEFT) picker_wheel_nudge(picker, -1, false);
-}
-
-static void services_page_click_cb(lv_event_t *e)
-{
-    picker_wheel_click(static_cast<lv_obj_t *>(lv_event_get_user_data(e)));
-}
-
 static void streaming_services_open(const std::string &name, const std::string &tileId,
                                     const std::string &openedBinding)
 {
@@ -254,8 +241,7 @@ static void streaming_services_open(const std::string &name, const std::string &
 
     tile_bind_update(picker, [view]() { refresh_services_view(*view); });
 
-    lv_obj_add_event_cb(page.focus, services_page_key_cb, LV_EVENT_KEY, picker);
-    lv_obj_add_event_cb(page.focus, services_page_click_cb, LV_EVENT_CLICKED, picker);
+    picker_wheel_attach_encoder(picker, page.focus);
     nav_push(page);
 }
 
