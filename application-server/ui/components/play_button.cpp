@@ -4,6 +4,7 @@
  */
 
 #include "play_button.h"
+#include "permissions.h"
 #include "audio_source.h"
 #include "tile.h"
 #include "../ui_design_tokens.h"
@@ -31,7 +32,9 @@ static void refresh(lv_timer_t *timer)
 
 static void clicked(lv_event_t *)
 {
-    audio_source_toggle_play(audio_source_active());
+    const AudioSource *source = audio_source_active();
+    if (source && perm_source_control(source->path) < PERM_FULL) return;   /* view only for the logged-in role */
+    audio_source_toggle_play(source);
 }
 
 /* Circular outline button: an icon-coloured disc with a background-coloured disc on top. */

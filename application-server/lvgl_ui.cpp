@@ -28,9 +28,12 @@
 #include "ui/components/fw_update_overlay.h"
 #include "ui/components/info_list.h"
 #include "ui/components/level_gauge.h"
+#include "ui/components/lock_screen.h"
+#include "ui/components/permissions.h"
 #include "ui/components/picker_wheel.h"
 #include "ui/components/qr_code.h"
 #include "ui/components/scroll_pane.h"
+#include "ui/components/theme_images.h"
 #include "ui/components/now_playing_ribbon.h"
 #include "ui/components/home_controls.h"
 #include "ui/components/playback_page.h"
@@ -48,6 +51,7 @@
 #include <Screens.h>
 #include <Tiles.h>
 #include <Weather.h>
+#include <Roles.h>
 
 // Global simulator settings, defined in driver_backends.c. Must be populated
 // (window size, at minimum) before driver_backends_init_backend() is called,
@@ -91,7 +95,31 @@ enum SettingsRow
 };
 static const char *const SETTINGS_ROW_NAMES[SETTINGS_ROW_COUNT] = {
   "Brightness", "Bluetooth", "Streaming", "Network", "Appearance", "Advanced", "About", "Reboot"};
+// The global permission (see permissions.h) each row needs: hidden at 0, view only at 1. About is for everyone.
+static const char *const SETTINGS_ROW_PERMISSION[SETTINGS_ROW_COUNT] = {
+  "display", "bluetooth-admin", "streaming-admin", "advanced", "display", "advanced", nullptr, "reboot"};
 static lv_obj_t *settingsPicker;
+static std::vector<int> settingsRows;   // the rows the logged-in role can see, in picker order (index -> SettingsRow)
+
+static int settingsRowLevel(int row)
+{
+  return SETTINGS_ROW_PERMISSION[row] ? perm_global(SETTINGS_ROW_PERMISSION[row]) : PERM_FULL;
+}
+
+static std::vector<int> visibleSettingsRows()
+{
+  std::vector<int> rows;
+  for (int row = 0; row < SETTINGS_ROW_COUNT; row++)
+    if (settingsRowLevel(row) != PERM_HIDDEN)
+      rows.push_back(row);
+  return rows;
+}
+
+// The SettingsRow at picker index @p index; SETTINGS_ROW_COUNT if none.
+static int settingsRowAt(int index)
+{
+  return (index >= 0 && index < (int)settingsRows.size()) ? settingsRows[index] : SETTINGS_ROW_COUNT;
+}
 
 static std::string brightnessText()
 {
@@ -135,7 +163,7 @@ static void brightnessPageKeyCb(lv_event_t *e)
 {
   const uint32_t key = lv_event_get_key(e);
   const int step = (key == LV_KEY_RIGHT) ? 1 : (key == LV_KEY_LEFT) ? -1 : 0;
-  if (step == 0)
+  if (step == 0 || perm_global("display") < PERM_FULL)
     return;
   const float value = tile_read_number("/backlight", "brightness").value;
   const float target = (step > 0 ? std::floor(value / BRIGHTNESS_STEP) + 1
@@ -150,6 +178,8 @@ static void openBrightnessPage()
   const header_slot_t back  = {true,  UI_ICON_ARROW_BACK, nav_back_cb, nullptr};
   const header_slot_t empty = {false, UI_ICON_SETTINGS,   nullptr,     nullptr};
   header_create(page.screen, back, "Brightness", empty);
+  if (perm_global("display") < PERM_FULL)
+    perm_header_lock_create(page.screen);
 
   level_gauge_create(page.screen, "/backlight", "brightness");
 
@@ -271,6 +301,7 @@ static std::shared_ptr<Appearance> appearanceLeaf;
 static std::shared_ptr<Themes> themesLeaf;
 static std::shared_ptr<Misc> miscLeaf;
 static std::shared_ptr<Weather> weatherLeaf;
+static std::shared_ptr<Roles> rolesLeaf;
 static std::vector<Choice> appearanceChoices[APPEARANCE_ROW_COUNT];   // only while the page is open
 static lv_obj_t *appearanceList;                                     // only while the page is open
 
@@ -366,6 +397,8 @@ static void appearanceChoiceCb(int row, int option, void *)
 {
   if (row < 0 || row >= APPEARANCE_ROW_COUNT || option < 0 || option >= (int)appearanceChoices[row].size())
     return;
+  if (perm_global("display") < PERM_FULL)
+    return;   // view only: the list shows the current value again on the next refresh
   if (const auto element = appearanceElement(row))
     element->set(appearanceChoices[row][option].value);
 }
@@ -513,7 +546,10 @@ static void openAdvancedPage()
 // A tap on a row, or an encoder press released on it, opens that row's page.
 static void settingsRowActivatedCb(int index, void *)
 {
-  switch (index)
+  const int row = settingsRowAt(index);
+  if (row == SETTINGS_ROW_REBOOT && settingsRowLevel(row) < PERM_FULL)
+    return;   // view only: the row is shown, but nobody here may reboot
+  switch (row)
   {
   case SETTINGS_ROW_BRIGHTNESS: openBrightnessPage(); break;
   case SETTINGS_ROW_BLUETOOTH:  tile_bluetooth_devices_open(SETTINGS_ROW_NAMES[SETTINGS_ROW_BLUETOOTH]); break;
@@ -544,7 +580,8 @@ static void settingsEncoderCb(lv_event_t *e)
   switch (lv_event_get_code(e))
   {
   case LV_EVENT_PRESSED:
-    rebootArmed = picker_wheel_get_selected(picker) == SETTINGS_ROW_REBOOT;
+    rebootArmed = settingsRowAt(picker_wheel_get_selected(picker)) == SETTINGS_ROW_REBOOT &&
+                  settingsRowLevel(SETTINGS_ROW_REBOOT) == PERM_FULL;
     picker_wheel_set_press_active(picker, rebootArmed);
     break;
   case LV_EVENT_RELEASED:
@@ -555,7 +592,7 @@ static void settingsEncoderCb(lv_event_t *e)
   {
     const bool armed = rebootArmed;
     rebootArmed = false;
-    if (picker_wheel_get_selected(picker) == SETTINGS_ROW_REBOOT && !armed)
+    if (settingsRowAt(picker_wheel_get_selected(picker)) == SETTINGS_ROW_REBOOT && !armed)
       break;   // the highlight was lost before the release
     picker_wheel_click(picker);
     break;
@@ -581,13 +618,14 @@ static void updateSettingsValues()
 {
   if (!settingsPicker || lv_screen_active() != settingsDest.screen)
     return;
-  for (int row = 0; row < SETTINGS_ROW_COUNT; row++)
+  for (size_t index = 0; index < settingsRows.size(); index++)
   {
+    const int row = settingsRows[index];
     const std::string text = settingsRowValue(row);
     if (text == settingsShown[row])
       continue;
     settingsShown[row] = text;
-    picker_wheel_set_secondary_text(settingsPicker, row, text.c_str());
+    picker_wheel_set_secondary_text(settingsPicker, (int)index, text.c_str());
   }
 }
 
@@ -685,28 +723,33 @@ static void buildSettings()
   const header_slot_t emptySlot = {false, UI_ICON_SETTINGS,   nullptr,     nullptr};
   header_create(settingsDest.screen, backSlot, "Settings", emptySlot);
 
-  picker_wheel_item_t items[SETTINGS_ROW_COUNT] = {};
-  for (int row = 0; row < SETTINGS_ROW_COUNT; row++)
+  settingsRows = visibleSettingsRows();
+  std::vector<picker_wheel_item_t> items(settingsRows.size());
+  int rebootIndex = -1;
+  for (size_t index = 0; index < settingsRows.size(); index++)
   {
+    const int row = settingsRows[index];
     settingsShown[row] = settingsRowValue(row);   // the picker copies the strings it shows
-    items[row].primary_text         = SETTINGS_ROW_NAMES[row];
-    items[row].primary_text_align   = LV_TEXT_ALIGN_LEFT;
+    items[index].primary_text         = SETTINGS_ROW_NAMES[row];
+    items[index].primary_text_align   = LV_TEXT_ALIGN_LEFT;
     // Rows without a live value get no secondary label.
-    items[row].secondary_text       = settingsShown[row].empty() ? nullptr : settingsShown[row].c_str();
-    items[row].secondary_text_align = LV_TEXT_ALIGN_RIGHT;
+    items[index].secondary_text       = settingsShown[row].empty() ? nullptr : settingsShown[row].c_str();
+    items[index].secondary_text_align = LV_TEXT_ALIGN_RIGHT;
     // Reboot is an action, not a subpage.
-    items[row].accessory            = row == SETTINGS_ROW_REBOOT ? PICKER_WHEEL_ITEM_ACCESSORY_NONE
-                                                                 : PICKER_WHEEL_ITEM_ACCESSORY_ARROW;
+    items[index].accessory            = row == SETTINGS_ROW_REBOOT ? PICKER_WHEEL_ITEM_ACCESSORY_NONE
+                                                                   : PICKER_WHEEL_ITEM_ACCESSORY_ARROW;
+    if (row == SETTINGS_ROW_REBOOT)
+      rebootIndex = (int)index;
   }
 
   picker_wheel_props_t props = {};
   props.type               = PICKER_WHEEL_TYPE_CENTER_ARROW;   // accessory on the right
-  props.items              = items;
-  props.item_count         = SETTINGS_ROW_COUNT;
+  props.items              = items.data();
+  props.item_count         = (int)items.size();
   props.selected_index     = 0;
   props.activated_callback = settingsRowActivatedCb;
   props.pressed_alt_enabled = true;                    // Reboot highlights in red while pressed
-  props.pressed_alt_index   = SETTINGS_ROW_REBOOT;
+  props.pressed_alt_index   = rebootIndex;
   props.pressed_alt_color   = lv_color_hex(0xE5484D);
   settingsPicker = picker_wheel_create(settingsDest.screen, &props);
   lv_obj_add_event_cb(settingsPicker, [](lv_event_t *) { settingsPicker = nullptr; }, LV_EVENT_DELETE, nullptr);
@@ -874,9 +917,31 @@ static void scheduleLvglTick(std::shared_ptr<boost::asio::steady_timer> timer,
     if (homePane && !screensChanged)
       scroll_pane_refresh(homePane);
   }
+  // Who is logged in (or the roles' permissions) changed: tiles are hidden / locked per role, so rebuild them,
+  // and close any open page (it may no longer be allowed). Logging out is handled by the lock screen.
+  const bool rolesChanged = rolesLeaf && rolesLeaf->isModified({rolesLeaf->configPtr, rolesLeaf->activeRolePtr});
+  if (rolesChanged && homePane)
+  {
+    if (!rolesLeaf->locked())
+      nav_close_pages(false);
+    if (!screensChanged)
+      scroll_pane_refresh(homePane);
+    // the Settings rows follow the role: rebuild the destination (going home first if it is showing)
+    if (visibleSettingsRows() != settingsRows)
+    {
+      if (lv_screen_active() == settingsDest.screen)
+        nav_home(false);
+      lv_obj_delete(settingsDest.screen);
+      settingsDest = {nullptr, nullptr};
+      buildSettings();
+    }
+  }
+  theme_background_update();
+  lock_screen_tick();
   if (homePane && homeHeader)
   {
     updateScreenTitle(homeHeader, homePane);
+    header_set_subtitle(homeHeader, perm_role_name().c_str());
   }
   tile_live_update();
   updateSetupMode();
@@ -1011,6 +1076,7 @@ void lvglUiInit(boost::asio::io_context &io_context, std::shared_ptr<RootObject>
   themesLeaf = themes;
   miscLeaf = std::dynamic_pointer_cast<Misc>(root->leafFromPath("/misc"));
   weatherLeaf = std::dynamic_pointer_cast<Weather>(root->leafFromPath("/weather"));
+  rolesLeaf = std::dynamic_pointer_cast<Roles>(root->leafFromPath("/roles"));
   deviceInfoLeaf = std::dynamic_pointer_cast<DeviceInfo>(root->leafFromPath("/deviceInfo"));
   ui_design_tokens_init(appearance, themes);
 
@@ -1019,6 +1085,7 @@ void lvglUiInit(boost::asio::io_context &io_context, std::shared_ptr<RootObject>
   // icon/text colors render invisibly against LVGL's default white bg.
   homeScreen = lv_screen_active();
   lv_obj_add_style(homeScreen, ui_theme_get_style_bg(), 0);
+  lv_obj_add_style(homeScreen, theme_background_style(), 0);   // the theme's background image, if any
 
   // Rotate first: the layout sizes are read from the display when the UI is built.
   applyOrientation();
@@ -1029,6 +1096,7 @@ void lvglUiInit(boost::asio::io_context &io_context, std::shared_ptr<RootObject>
   updateSetupMode();   // open on the setup screens, not home, if the device is not configured yet
   fw_update_overlay_create();   // on the top layer: not rebuilt with the pages when the orientation changes
   updateFwUpdateOverlay();
+  lock_screen_init();   // locked at power-on if there are roles: the first tick opens Enter PIN
 
   // LVGL only flushes what changed, so on the framebuffer backend whatever was in the
   // framebuffer before the app started (boot splash, console, garbage after a reboot)

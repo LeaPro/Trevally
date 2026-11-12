@@ -138,6 +138,7 @@ int main(int argc, char *argv[])
     root->addLeaf<LeaSensor>("/leaSensor");
     root->addLeaf<Appearance>("/appearance");
     root->addLeaf<Backlight>("/backlight");
+    root->addLeaf<Screensaver>("/screensaver");
     root->addLeaf<DateTime>("/dateTime");
     root->addLeaf<Themes>("/themes");
     root->addLeaf<Weather>("/weather");

@@ -8,6 +8,7 @@
 #include "album_art.h"
 #include "control_button.h"
 #include "play_button.h"
+#include "permissions.h"
 #include "tile.h"
 #include "../nav.h"
 #include "../ui_design_tokens.h"
@@ -254,7 +255,7 @@ static void page_key_cb(lv_event_t *e)
     const uint32_t key = lv_event_get_key(e);
     const int step = (key == LV_KEY_RIGHT) ? 1 : (key == LV_KEY_LEFT) ? -1 : 0;
     const AudioSource *source = audio_source_active();
-    if (step == 0 || !source) return;
+    if (step == 0 || !source || perm_source_control(source->path) < PERM_FULL) return;
 
     tile_step_number(source->path, "volume", step);
     lv_label_set_text(p->volumeValue, tile_format_number(tile_read_number(source->path, "volume").value).c_str());

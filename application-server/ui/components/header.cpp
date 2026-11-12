@@ -87,3 +87,34 @@ void header_set_right_visible(lv_obj_t *header, bool visible)
     if (visible) lv_obj_add_flag(slot, LV_OBJ_FLAG_CLICKABLE);
     else         lv_obj_remove_flag(slot, LV_OBJ_FLAG_CLICKABLE);
 }
+
+/* Title moved up / subtitle placed so the pair sits above the home pane's pagination dots (UI_PAGINATION_TOP_PX). */
+#define HEADER_SUBTITLE_TITLE_SHIFT_PX (-9)
+#define HEADER_SUBTITLE_Y_PX           38
+
+void header_set_subtitle(lv_obj_t *header, const char *subtitle)
+{
+    if (!header) return;
+    lv_obj_t *title = lv_obj_get_child(header, 1);   /* children: left slot, title, right slot[, subtitle] */
+    lv_obj_t *label = lv_obj_get_child_count(header) > 3 ? lv_obj_get_child(header, 3) : nullptr;
+    const char *text = subtitle ? subtitle : "";
+
+    if (text[0] == '\0') {
+        if (label) lv_obj_delete(label);
+        lv_obj_set_style_translate_y(title, 0, 0);
+        return;
+    }
+    if (!label) {
+        label = lv_label_create(header);
+        lv_obj_add_flag(label, LV_OBJ_FLAG_IGNORE_LAYOUT);
+        lv_obj_add_style(label, ui_theme_get_style_text_secondary(), 0);
+        lv_obj_set_style_text_font(label, &satoshi_medium_14, 0);
+        lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_set_width(label, lv_obj_get_width(title));
+        lv_obj_set_pos(label, lv_obj_get_x(title), HEADER_SUBTITLE_Y_PX);
+        lv_label_set_long_mode(label, LV_LABEL_LONG_MODE_DOTS);
+        lv_obj_set_style_translate_y(title, HEADER_SUBTITLE_TITLE_SHIFT_PX, 0);
+    }
+    if (strcmp(lv_label_get_text(label), text) != 0)
+        lv_label_set_text(label, text);
+}

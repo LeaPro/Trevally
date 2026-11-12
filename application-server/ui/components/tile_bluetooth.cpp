@@ -10,6 +10,7 @@
 #include "header.h"
 #include "audio_source.h"
 #include "level_gauge.h"
+#include "permissions.h"
 #include "picker_wheel.h"
 #include "nav.h"
 #include "source_status.h"
@@ -285,7 +286,7 @@ struct ForgetCtx
 static void forget_cb(lv_event_t *e)
 {
     ForgetCtx *ctx = static_cast<ForgetCtx *>(lv_event_get_user_data(e));
-    if (ctx->done) return;
+    if (ctx->done || perm_global("bluetooth-admin") < PERM_FULL) return;
     ctx->done = true;
     tile_set_string("/bluetooth", "removeDevice", ctx->mac);
     nav_pop();
@@ -512,6 +513,7 @@ static void devices_activated_cb(int index, void *user_data)
 {
     DevicesView &v = **static_cast<std::shared_ptr<DevicesView> *>(user_data);
     if (v.done || index < 0 || index >= (int)v.devices.size()) return;
+    if (perm_global("bluetooth-admin") < PERM_FULL) return;   /* view only for the logged-in role */
     const PairedDevice dev = v.devices[index];
 
     if (v.mode == DevicesMode::Paired)
@@ -571,13 +573,14 @@ static void bluetooth_devices_open(DevicesMode mode)
     const header_slot_t back = {true, UI_ICON_ARROW_BACK, nav_back_cb, nullptr};
     header_slot_t right = {false, UI_ICON_SETTINGS, nullptr, nullptr};
     const char *title = devicesPageTitle.c_str();
+    const bool admin = perm_global("bluetooth-admin") == PERM_FULL;   /* view only: no Edit / Add */
     if (mode == DevicesMode::Paired)
     {
-        right = {true, UI_ICON_SETTINGS, bluetooth_devices_edit_open, nullptr, "Edit"};
+        right = {admin, UI_ICON_SETTINGS, bluetooth_devices_edit_open, nullptr, "Edit"};
     }
     else if (mode == DevicesMode::Edit)
     {
-        right = {true, UI_ICON_ADD, bluetooth_devices_discover_open, nullptr};
+        right = {admin, UI_ICON_ADD, bluetooth_devices_discover_open, nullptr};
         title = "Edit";
     }
     else
@@ -602,7 +605,9 @@ static void bluetooth_devices_open(DevicesMode mode)
     lv_obj_add_event_cb(picker, devices_view_delete_cb, LV_EVENT_DELETE, holder);
 
     if (mode == DevicesMode::Paired)
-        toggle_row_create(page.screen, "/bluetooth", "serviceRunning");   /* on top of the picker's empty upper part */
+        toggle_row_create(page.screen, "/bluetooth", "serviceRunning", !admin);   /* on top of the picker's empty upper part */
+    if (!admin)
+        perm_header_lock_create(page.screen);
 
     if (mode == DevicesMode::Paired)
     {
@@ -652,7 +657,8 @@ void tile_bluetooth_volume_open(const std::string &name, const std::string &bind
     nav_page_t page = nav_screen_create();
 
     const header_slot_t back = {true, UI_ICON_ARROW_BACK, nav_back_cb, nullptr};
-    const header_slot_t gear = {true, UI_ICON_SETTINGS, bluetooth_devices_paired_open, nullptr};
+    const header_slot_t gear = {perm_global("bluetooth-admin") != PERM_HIDDEN, UI_ICON_SETTINGS,
+                                bluetooth_devices_paired_open, nullptr};
     header_create(page.screen, back, name.c_str(), gear);
 
     level_gauge_create(page.screen, "/bluetooth", "volume");

@@ -45,6 +45,9 @@ void nav_pop(size_t count = 1);
 /** Switches to a destination, closing any open pages. Slides right when going home, left otherwise. */
 void nav_goto(const nav_dest_t &dest, bool animate = true);
 
+/** Switches to the home destination, closing any open pages. */
+void nav_home(bool animate);
+
 /** Closes all open pages and returns to the current destination. */
 void nav_close_pages(bool animate);
 

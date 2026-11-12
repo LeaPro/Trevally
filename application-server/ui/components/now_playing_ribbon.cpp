@@ -7,6 +7,7 @@
 #include "audio_source.h"
 #include "album_art.h"
 #include "equalizer.h"
+#include "permissions.h"
 #include "play_button.h"
 #include "tile.h"
 #include "../ui_design_tokens.h"
@@ -58,6 +59,8 @@ static void refresh(lv_timer_t *timer)
     Ribbon *r = (Ribbon *)lv_timer_get_user_data(timer);
 
     const AudioSource *source = audio_source_active();
+    if (source && perm_source_control(source->path) == PERM_HIDDEN)
+        source = nullptr;   /* no access for the logged-in role: shown as no source */
     if (!source) {
         if (!lv_obj_has_flag(r->root, LV_OBJ_FLAG_HIDDEN)) {
             equalizer_set_running(r->equalizer, false);

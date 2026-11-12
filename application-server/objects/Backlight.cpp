@@ -81,15 +81,33 @@ bool Backlight::applyPercent(float percent)
 #endif
 }
 
+void Backlight::sleepNow()
+{
+  if (applyPercent(0.0f))
+  {
+    screenOff = true;
+    asleep = true;
+    lastInactiveMs = lv_display_get_inactive_time(nullptr);
+  }
+}
+
 void Backlight::update(bool sensorsOnly, bool refreshVolatileElements)
 {
   if (sensorsOnly)
   {
+    uint32_t inactiveMs = lv_display_get_inactive_time(nullptr);
+    const bool input = inactiveMs < lastInactiveMs; // the idle time restarted: someone touched / turned it
+    lastInactiveMs = inactiveMs;
+    if (asleep)
+    {
+      if (input && applyPercent(brightnessPtr->get()))
+        screenOff = asleep = false;
+      return;
+    }
     // inactivity timeout: switch the backlight off after timeoutSeconds without
     // user input, restore it on the next touch
     if (!timeoutPtr->get())
       return;
-    uint32_t inactiveMs = lv_display_get_inactive_time(nullptr);
     uint32_t timeoutMs = (uint32_t)(timeoutSecondsPtr->get() * 1000.0f);
     if (!screenOff && inactiveMs >= timeoutMs)
     {
@@ -112,7 +130,7 @@ void Backlight::update(bool sensorsOnly, bool refreshVolatileElements)
       // the webUI would find the on-device idle time already past the limit)
       lv_display_trigger_activity(nullptr);
       if (applyPercent(brightnessPtr->get()))
-        screenOff = false;
+        screenOff = asleep = false;
     }
   }
 }

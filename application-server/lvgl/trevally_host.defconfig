@@ -34,6 +34,9 @@ CONFIG_LV_FONT_MONTSERRAT_28=y
 # --- Host display/input backend ---
 CONFIG_LV_USE_SDL=y
 # CONFIG_LV_SDL_AUTO_BACKEND is not set
+# PARTIAL like the target's fbdev backend. (LVGL's default, DIRECT, keeps drawing from
+# its old framebuffer after the orientation setting resizes the window, and crashes.)
+CONFIG_LV_SDL_RENDER_MODE_PARTIAL=y
 CONFIG_LV_SDL_BUF_COUNT=2
 CONFIG_LV_USE_GESTURE_RECOGNITION=y
 

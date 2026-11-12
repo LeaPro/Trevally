@@ -5,6 +5,7 @@
 
 #include "screen.h"
 #include "audio_source.h"
+#include "permissions.h"
 #include "tile.h"
 #include "../ui_design_tokens.h"
 
@@ -96,6 +97,8 @@ std::vector<TileSpec> readTiles(const json &screenConfig)
             break;
         }
         spec.id      = tileId.get<std::string>();
+        if (perm_tile_level(spec.type, spec.id) == PERM_HIDDEN)
+            continue;   /* the logged-in role has no access: the screen is laid out without it */
         spec.name    = jsonString(*tileIt, "name");
         spec.binding = jsonString(*tileIt, "binding");
         if (spec.type == STREAMING && !audio_source_is_streaming_binding(spec.binding)) {

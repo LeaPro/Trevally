@@ -31,6 +31,10 @@ lv_obj_t *header_create(lv_obj_t *parent, const header_slot_t &left,
 /** Sets the centre text (adaptive: wraps, or scrolls if it doesn't fit on one line). No-op if unchanged. */
 void header_set_title(lv_obj_t *header, const char *title);
 
+/** A smaller second line under the title (e.g. the logged-in role); "" removes it and re-centres the title.
+ *  No-op if unchanged. */
+void header_set_subtitle(lv_obj_t *header, const char *subtitle);
+
 /** Shows / hides the right slot's icon (and whether it takes taps). Its width stays reserved, so the title
  *  doesn't move. The slot must have been created with show = true. */
 void header_set_right_visible(lv_obj_t *header, bool visible);

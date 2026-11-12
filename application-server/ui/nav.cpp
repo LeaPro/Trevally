@@ -4,6 +4,7 @@
  */
 
 #include "nav.h"
+#include "theme_images.h"
 #include "tile.h"
 #include "ui_design_tokens.h"
 
@@ -39,6 +40,7 @@ nav_page_t nav_screen_create()
     nav_page_t page;
     page.screen = lv_obj_create(nullptr);
     lv_obj_add_style(page.screen, ui_theme_get_style_bg(), 0);
+    lv_obj_add_style(page.screen, theme_background_style(), 0);   /* the theme's background image, if any */
     lv_obj_set_style_bg_opa(page.screen, LV_OPA_COVER, 0);
     lv_obj_clear_flag(page.screen, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -116,6 +118,11 @@ void nav_goto(const nav_dest_t &dest, bool animate)
                         !animate ? LV_SCREEN_LOAD_ANIM_NONE
                                  : goingHome ? LV_SCREEN_LOAD_ANIM_MOVE_RIGHT : LV_SCREEN_LOAD_ANIM_MOVE_LEFT,
                         animate ? NAV_ANIM_MS : 0, 0, deleteActive);
+}
+
+void nav_home(bool animate)
+{
+    nav_goto(homeDest, animate);
 }
 
 void nav_close_pages(bool animate)

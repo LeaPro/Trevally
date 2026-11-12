@@ -7,6 +7,8 @@
 #include "audio_source.h"
 #include "audio_sources_page.h"
 #include "control_button.h"
+#include "lock_screen.h"
+#include "permissions.h"
 #include "tile.h"
 #include "../ui_design_tokens.h"
 
@@ -101,10 +103,12 @@ static void refresh(lv_timer_t *timer)
 {
     HomeControls *c = (HomeControls *)lv_timer_get_user_data(timer);
     const AudioSource *source = audio_source_active();
+    /* a source the logged-in role has no access to is shown as none (its controls are hidden) */
+    const bool controlsHidden = source && perm_source_control(source->path) == PERM_HIDDEN;
 
     set_shown(c->cast,    source == nullptr);
-    set_shown(c->weather, source == nullptr);
-    set_shown(c->row,     source != nullptr);
+    set_shown(c->weather, source == nullptr || controlsHidden);
+    set_shown(c->row,     source != nullptr && !controlsHidden);
 
     /* The weather area shows the conditions at the default postal code. */
     const ui_icon_type_t weatherIcon = tile_weather_icon("default");
@@ -162,7 +166,12 @@ lv_obj_t *home_controls_create(lv_obj_t *parent, int w, int h)
                              h - (landscape ? LANDSCAPE_LOGO_BOTTOM : PORTRAIT_LOGO_BOTTOM) - LOGO_H);
 
     lv_obj_t *sleep = UI_ICON_CREATE_DEFAULT(area, UI_ICON_SLEEP);
-    if (sleep) lv_obj_align(sleep, LV_ALIGN_TOP_RIGHT, -(FOOTER_H - 74) / 2, footerY + (FOOTER_H - 74) / 2);
+    if (sleep) {
+        lv_obj_align(sleep, LV_ALIGN_TOP_RIGHT, -(FOOTER_H - 74) / 2, footerY + (FOOTER_H - 74) / 2);
+        /* sleep: log the role out and switch the screen off (see lock_screen.h) */
+        lv_obj_add_flag(sleep, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_event_cb(sleep, [](lv_event_t *) { lock_screen_sleep(); }, LV_EVENT_CLICKED, nullptr);
+    }
 
     c->timer = lv_timer_create(refresh, HOME_CONTROLS_POLL_MS, c);
     lv_obj_add_event_cb(area, [](lv_event_t *e) {

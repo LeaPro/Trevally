@@ -6,7 +6,8 @@
  *
  * Gauge page: header (back + title), the level gauge for one fader element, and optionally an outlined
  * button (e.g. "Subgroups", "Inputs"). The encoder changes the element by one dB / % per tick; pressing it is the
- * button. The value reads "-" while the element doesn't exist (yet) or doesn't know its value.
+ * button. The value reads "-" while the element doesn't exist (yet) or doesn't know its value. A read-only page
+ * (view-only permission, see permissions.h) shows a lock and ignores the encoder.
  *
  * Fader list page: header (back + title) and a picker of rows, each with a title, an optional subtitle and
  * an optional live level ("-6 dB" / "93 %"); choosing a row calls back with it. The rows are re-read every tick, so
@@ -27,7 +28,7 @@
  *  so the button comes and goes with e.g. the config. */
 void fader_page_open(const std::string &title, const std::string &leafPath, const std::string &element,
                      const std::string &buttonLabel = std::string(), std::function<void()> onButton = nullptr,
-                     std::function<bool()> showButton = nullptr);
+                     std::function<bool()> showButton = nullptr, bool readOnly = false);
 
 struct FaderListRow
 {

@@ -15,6 +15,9 @@
  *            sources' mix faders).
  *          - "Input Mixer" (every channel is Mixer): a list of the enabled sources, one row per source however
  *            many channels have it; a row's gauge sets that source's mix fader on all of them.
+ *        Role permissions (permissions.h): input-source-select below full can't apply states (at 0 the tile opens
+ *        the active state's volume instead); input-volume-control 0 hides the speaker icon, 1 makes the volume
+ *        pages read only.
  */
 
 #include "tile.h"
@@ -22,6 +25,7 @@
 #include "fader_page.h"
 #include "header.h"
 #include "nav.h"
+#include "permissions.h"
 #include "picker_wheel.h"
 #include "../ui_design_tokens.h"
 
@@ -70,7 +74,7 @@ static std::string active_state(const std::string &binding)
 
 /* A Mixer channel's enabled sources (Inputs page -> a Mixer row). */
 static void channel_mixer_open(const std::string &binding, const std::string &stateId,
-                               const std::string &mac, const std::string &channel)
+                               const std::string &mac, const std::string &channel, bool readOnly)
 {
     fader_list_open("Input Mixer",
         [binding, stateId, mac, channel]() {
@@ -84,11 +88,13 @@ static void channel_mixer_open(const std::string &binding, const std::string &st
                                         InputStates::mixFader(state, c, s)});
             return rows;
         },
-        [](const FaderListRow &row) { fader_page_open(row.title, fadersLeaf, row.element); });
+        [readOnly](const FaderListRow &row) {
+            fader_page_open(row.title, fadersLeaf, row.element, "", nullptr, nullptr, readOnly);
+        });
 }
 
 /* All-Mixer state: one row per enabled source, its gauge on every channel that has it. */
-static void shared_mixer_open(const std::string &binding, const std::string &stateId)
+static void shared_mixer_open(const std::string &binding, const std::string &stateId, bool readOnly)
 {
     fader_list_open("Input Mixer",
         [binding, stateId]() {
@@ -107,11 +113,14 @@ static void shared_mixer_open(const std::string &binding, const std::string &sta
             }
             return rows;
         },
-        [](const FaderListRow &row) { fader_page_open(row.title, fadersLeaf, row.element); });
+        [readOnly](const FaderListRow &row) {
+            fader_page_open(row.title, fadersLeaf, row.element, "", nullptr, nullptr, readOnly);
+        });
 }
 
 /* The state's volume-controlled channels, each with its own level (a Mixer channel: none; it opens its sources). */
-static void inputs_open(const std::string &binding, const std::string &stateId, const std::string &title)
+static void inputs_open(const std::string &binding, const std::string &stateId, const std::string &title,
+                        bool readOnly)
 {
     fader_list_open(title,
         [binding, stateId]() {
@@ -130,30 +139,34 @@ static void inputs_open(const std::string &binding, const std::string &stateId, 
             }
             return rows;
         },
-        [binding, stateId](const FaderListRow &row) {
+        [binding, stateId, readOnly](const FaderListRow &row) {
             if (!row.leafPath.empty())
             {
-                fader_page_open(row.title + " - " + row.subtitle, fadersLeaf, row.element);
+                fader_page_open(row.title + " - " + row.subtitle, fadersLeaf, row.element, "", nullptr, nullptr,
+                                readOnly);
                 return;
             }
             State state;
             if (!find_state(binding, stateId, state)) return;
             for (const Channel &c : state.channels)
                 if (InputStates::channelFader(state, c) == row.key)
-                    channel_mixer_open(binding, stateId, c.mac, c.channel);
+                    channel_mixer_open(binding, stateId, c.mac, c.channel, readOnly);
         });
 }
 
-static void state_volume_open(const std::string &binding, const State &state)
+/* @p readOnly: the role may look at the levels but not change them (input-volume-control 1). */
+static void state_volume_open(const std::string &binding, const State &state, bool readOnly)
 {
     const std::string title = state.name + " Input Volume";
     const std::string stateId = state.id;
     if (state.allMixer())
         fader_page_open(title, fadersLeaf, InputStates::stateFader(state), "Input Mixer",
-                        [binding, stateId]() { shared_mixer_open(binding, stateId); });
+                        [binding, stateId, readOnly]() { shared_mixer_open(binding, stateId, readOnly); }, nullptr,
+                        readOnly);
     else
         fader_page_open(title, fadersLeaf, InputStates::stateFader(state), "Inputs",
-                        [binding, stateId, title]() { inputs_open(binding, stateId, title); });
+                        [binding, stateId, title, readOnly]() { inputs_open(binding, stateId, title, readOnly); },
+                        nullptr, readOnly);
 }
 
 /* ---- States page ---- */
@@ -163,6 +176,8 @@ struct StatesView
     std::string              binding;
     std::vector<State>       states;
     std::string              active;
+    int                      selectLevel = PERM_FULL;   /* input-source-select: below full, states can't be applied */
+    int                      volumeLevel = PERM_FULL;   /* input-volume-control: hidden at 0, view only at 1 */
     lv_obj_t                *picker = nullptr;
     lv_obj_t                *header = nullptr;
 };
@@ -184,7 +199,8 @@ static std::vector<picker_wheel_item_t> make_state_items(const StatesView &v)
 static void refresh_volume_icon(const StatesView &v)
 {
     const int selected = picker_wheel_get_selected(v.picker);
-    const bool volume = selected >= 0 && selected < (int)v.states.size() && v.states[selected].hasVolume();
+    const bool volume = selected >= 0 && selected < (int)v.states.size() && v.states[selected].hasVolume() &&
+                        v.volumeLevel != PERM_HIDDEN;
     header_set_right_visible(v.header, volume);
 }
 
@@ -224,7 +240,7 @@ static void refresh_states_view(StatesView &v)
 static void states_activated_cb(int index, void *user_data)
 {
     StatesView &v = **static_cast<std::shared_ptr<StatesView> *>(user_data);
-    if (index < 0 || index >= (int)v.states.size()) return;
+    if (index < 0 || index >= (int)v.states.size() || v.selectLevel < PERM_FULL) return;
     if (auto input = lea_input())
         input->applyState(v.binding, v.states[index].id);
     refresh_states_view(v);
@@ -239,8 +255,9 @@ static void states_volume_cb(lv_event_t *e)
 {
     const StatesView &v = **static_cast<std::shared_ptr<StatesView> *>(lv_event_get_user_data(e));
     const int selected = picker_wheel_get_selected(v.picker);
-    if (selected < 0 || selected >= (int)v.states.size() || !v.states[selected].hasVolume()) return;
-    state_volume_open(v.binding, v.states[selected]);
+    if (selected < 0 || selected >= (int)v.states.size() || !v.states[selected].hasVolume() ||
+        v.volumeLevel == PERM_HIDDEN) return;
+    state_volume_open(v.binding, v.states[selected], v.volumeLevel < PERM_FULL);
 }
 
 static void states_view_delete_cb(lv_event_t *e)
@@ -248,13 +265,25 @@ static void states_view_delete_cb(lv_event_t *e)
     delete static_cast<std::shared_ptr<StatesView> *>(lv_event_get_user_data(e));
 }
 
-void tile_input_open(const std::string &name, const std::string &binding)
+void tile_input_open(const std::string &name, const std::string &binding, const std::string &tileId)
 {
     (void)name;
+    const int selectLevel = perm_tile(tileId, "input-source-select");
+    const int volumeLevel = perm_tile(tileId, "input-volume-control");
+    if (selectLevel == PERM_HIDDEN)
+    {
+        /* the states aren't for this role: straight to the active state's volume, if it may see that */
+        State state;
+        if (volumeLevel != PERM_HIDDEN && find_state(binding, active_state(binding), state) && state.hasVolume())
+            state_volume_open(binding, state, volumeLevel < PERM_FULL);
+        return;
+    }
     auto view = std::make_shared<StatesView>();
-    view->binding = binding;
-    view->states  = read_states(binding);
-    view->active  = active_state(binding);
+    view->binding     = binding;
+    view->states      = read_states(binding);
+    view->active      = active_state(binding);
+    view->selectLevel = selectLevel;
+    view->volumeLevel = volumeLevel;
     if (view->states.empty()) return;
     auto *holder = new std::shared_ptr<StatesView>(view);
 

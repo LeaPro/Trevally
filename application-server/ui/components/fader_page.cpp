@@ -8,6 +8,7 @@
 #include "header.h"
 #include "level_gauge.h"
 #include "nav.h"
+#include "permissions.h"
 #include "picker_wheel.h"
 #include "../ui_design_tokens.h"
 
@@ -26,6 +27,7 @@ struct FaderPageCtx
     std::string element;
     std::function<void()> onButton;
     std::function<bool()> showButton;   /* null: always shown */
+    bool readOnly;
 };
 
 /* Encoder rotation changes the element by one dB / % per tick (see fader_step()); a press is the button, if the page
@@ -35,7 +37,7 @@ static void fader_page_key_cb(lv_event_t *e)
     const FaderPageCtx *ctx = static_cast<const FaderPageCtx *>(lv_event_get_user_data(e));
     const uint32_t key = lv_event_get_key(e);
     const int step = (key == LV_KEY_RIGHT) ? 1 : (key == LV_KEY_LEFT) ? -1 : 0;
-    if (step != 0)
+    if (step != 0 && !ctx->readOnly)
         fader_step(ctx->leafPath, ctx->element, step);
 }
 
@@ -100,9 +102,9 @@ static lv_obj_t *page_button_create(lv_obj_t *screen, const std::string &label)
 
 void fader_page_open(const std::string &title, const std::string &leafPath, const std::string &element,
                      const std::string &buttonLabel, std::function<void()> onButton,
-                     std::function<bool()> showButton)
+                     std::function<bool()> showButton, bool readOnly)
 {
-    FaderPageCtx *ctx = new FaderPageCtx{leafPath, element, std::move(onButton), std::move(showButton)};
+    FaderPageCtx *ctx = new FaderPageCtx{leafPath, element, std::move(onButton), std::move(showButton), readOnly};
     nav_page_t page = nav_screen_create();
 
     const header_slot_t back = {true, UI_ICON_ARROW_BACK, nav_back_cb, nullptr};
@@ -110,6 +112,8 @@ void fader_page_open(const std::string &title, const std::string &leafPath, cons
     header_create(page.screen, back, title.c_str(), none);
 
     level_gauge_create(page.screen, leafPath, element.c_str(), true /*faderUnits*/);
+    if (readOnly)
+        perm_header_lock_create(page.screen);
 
     if (!buttonLabel.empty())
     {

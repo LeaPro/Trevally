@@ -4,6 +4,7 @@
  */
 
 #include "source_status.h"
+#include "permissions.h"
 #include "audio_source.h"
 #include "tile.h"
 #include "../ui_design_tokens.h"
@@ -134,7 +135,7 @@ static void toggle_ctx_delete_cb(lv_event_t *e)
     delete static_cast<ToggleCtx *>(lv_event_get_user_data(e));
 }
 
-lv_obj_t *toggle_row_create(lv_obj_t *screen, const std::string &path, const std::string &element)
+lv_obj_t *toggle_row_create(lv_obj_t *screen, const std::string &path, const std::string &element, bool readOnly)
 {
     lv_obj_t *row = tile_container(screen);
     lv_obj_set_size(row, ui_content_w() - 2 * MARGIN_PX, SWITCH_H_PX);
@@ -147,6 +148,7 @@ lv_obj_t *toggle_row_create(lv_obj_t *screen, const std::string &path, const std
     lv_obj_t *sw = make_switch(row);
     lv_obj_align(sw, LV_ALIGN_RIGHT_MID, 0, 0);
     if (on) lv_obj_add_state(sw, LV_STATE_CHECKED);
+    if (readOnly) lv_obj_add_state(sw, LV_STATE_DISABLED);   /* view only for the logged-in role */
 
     ToggleCtx *ctx = new ToggleCtx{path, element, sw};
     lv_obj_add_event_cb(sw, toggle_changed_cb, LV_EVENT_VALUE_CHANGED, ctx);
@@ -200,6 +202,8 @@ void source_enable_control_create(lv_obj_t *screen, lv_obj_t *focus, const std::
     }
 
     if (leafPath.empty()) lv_obj_add_state(sw, LV_STATE_DISABLED);   /* a binding that names no source */
+    if (!leafPath.empty() && perm_source_control(leafPath) < PERM_FULL)
+        lv_obj_add_state(sw, LV_STATE_DISABLED);   /* view only for the logged-in role */
 
     if (tile_read_bool(leafPath, "enable")) lv_obj_add_state(sw, LV_STATE_CHECKED);
 

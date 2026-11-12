@@ -95,7 +95,7 @@ lv_obj_t *tile_weather_degrees_create(lv_obj_t *parent, const std::string &degre
  * page are made clickable by tile_create(). */
 void tile_bluetooth_volume_open(const std::string &name, const std::string &binding);
 void tile_output_volume_open(const std::string &name, const std::string &binding);
-void tile_input_open(const std::string &name, const std::string &binding);
+void tile_input_open(const std::string &name, const std::string &binding, const std::string &tileId);
 void tile_streaming_volume_open(const std::string &name, const std::string &binding,
                                 const std::string &tileId);
 

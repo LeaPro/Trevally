@@ -198,8 +198,7 @@ lv_obj_t *scroll_pane_create(lv_obj_t *parent)
 {
     lv_obj_t *pane = lv_obj_create(parent);
     lv_obj_remove_style_all(pane);
-    lv_obj_add_style(pane, ui_theme_get_style_bg(), 0);
-    lv_obj_set_style_bg_opa(pane, LV_OPA_COVER, 0);
+    /* transparent: the screen's background (the theme's colour or background image) shows through */
     lv_obj_clear_flag(pane, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_size(pane, ui_content_w(), ui_pane_h());
 

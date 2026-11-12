@@ -4,6 +4,7 @@
  */
 
 #include "control_button.h"
+#include "permissions.h"
 #include "tile.h"
 #include "../ui_design_tokens.h"
 
@@ -30,7 +31,9 @@ static void refresh(lv_timer_t *timer)
 static void clicked(lv_event_t *e)
 {
     const ControlButton *b = (const ControlButton *)lv_event_get_user_data(e);
-    audio_source_press(audio_source_active(), b->control);
+    const AudioSource *source = audio_source_active();
+    if (source && perm_source_control(source->path) < PERM_FULL) return;   /* view only for the logged-in role */
+    audio_source_press(source, b->control);
 }
 
 lv_obj_t *control_button_create(lv_obj_t *parent, int h, const AudioControl *control)

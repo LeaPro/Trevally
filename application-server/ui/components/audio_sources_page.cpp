@@ -7,6 +7,7 @@
 #include "audio_source.h"
 #include "header.h"
 #include "nav.h"
+#include "permissions.h"
 #include "picker_wheel.h"
 #include "tile.h"
 #include "../ui_design_tokens.h"
@@ -158,6 +159,9 @@ static void activated_cb(int index, void *user_data)
     if (index < 0 || index >= (int)v.rows.size()) return;
 
     const AudioSource *source = v.rows[index];
+    const int level = v.streamingOnly ? perm_global("streaming-admin")
+                                      : perm_source_control(source ? source->path : BLUETOOTH_PATH);
+    if (level < PERM_FULL) return;   /* view only for the logged-in role */
     if (!source) {
         if (v.checked == BLUETOOTH_PATH) {   /* tapping the enabled source disables it */
             audio_source_set_enabled(BLUETOOTH_PATH, false);

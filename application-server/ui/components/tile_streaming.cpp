@@ -13,6 +13,7 @@
 #include "header.h"
 #include "level_gauge.h"
 #include "nav.h"
+#include "permissions.h"
 #include "picker_wheel.h"
 #include "audio_source.h"
 #include "source_status.h"
@@ -180,6 +181,7 @@ static void services_activated_cb(int index, void *user_data)
 {
     ServicesView &v = **static_cast<std::shared_ptr<ServicesView> *>(user_data);
     if (index < 0 || index >= (int)v.rows.size()) return;
+    if (perm_global("streaming-admin") < PERM_FULL) return;   /* view only for the logged-in role */
     const AudioSource *source = v.rows[index];
     tile_binding_set(v.tileId, source ? std::string(source->path + 1)   /* the leaf's name, without the slash */
                                       : std::string(AUDIO_SOURCE_DEFAULT_BINDING));
@@ -285,7 +287,7 @@ void tile_streaming_volume_open(const std::string &name, const std::string &bind
     nav_page_t page = nav_screen_create();
 
     const header_slot_t back = {true, UI_ICON_ARROW_BACK, nav_back_cb, nullptr};
-    const header_slot_t gear = {true, UI_ICON_SETTINGS, streaming_gear_cb, ctx};
+    const header_slot_t gear = {perm_global("streaming-admin") != PERM_HIDDEN, UI_ICON_SETTINGS, streaming_gear_cb, ctx};
     header_create(page.screen, back, name.c_str(), gear);
 
     level_gauge_create(page.screen, ctx->leafPath, "volume");

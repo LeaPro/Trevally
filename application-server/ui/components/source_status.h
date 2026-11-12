@@ -43,6 +43,7 @@ void source_enable_control_create(lv_obj_t *screen, lv_obj_t *focus, const std::
  * @p path / @p element: the switch follows the element (it can also change from the websocket) and touching it
  * writes it. Same screen requirement as source_status_dot_create(). It overlays the top of the page's content.
  */
-lv_obj_t *toggle_row_create(lv_obj_t *screen, const std::string &path, const std::string &element);
+lv_obj_t *toggle_row_create(lv_obj_t *screen, const std::string &path, const std::string &element,
+                            bool readOnly = false);
 
 #endif /* SOURCE_STATUS_H */

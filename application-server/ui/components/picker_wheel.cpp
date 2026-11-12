@@ -14,12 +14,18 @@
  * - Bottom fade gradient: 196px height, transparent to background color (opaque) - theme-aware
  * 
  * Note: The fades are plain objects with a vertical style gradient whose two stops are the
- * theme background color at different opacities (ui_theme_get_style_bg_fade()).
+ * theme background color at different opacities (ui_theme_get_style_bg_fade()). Over a theme
+ * background image (see theme_images.h) a color would show as bands, so there the rows are
+ * faded instead: the scroll area gets an alpha mask, and the container is transparent.
  */
 
 #include "picker_wheel.h"
 #include "adaptive_text.h"
+#include "theme_images.h"
 #include "../ui_design_tokens.h"
+#include <map>
+#include <utility>
+#include <vector>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -52,6 +58,8 @@ typedef struct {
     picker_wheel_props_t props;
     lv_obj_t* scroll_area;
     lv_obj_t* highlight_box;
+    lv_obj_t* fade_top;      // the colour fades; hidden over a theme background image
+    lv_obj_t* fade_bottom;
     picker_wheel_item_t* items_copy;  // Local copy of items
     lv_obj_t** item_rows;
     lv_obj_t** primary_labels;
@@ -70,7 +78,9 @@ static bool is_alt_highlight_active(const picker_wheel_data_t* data);
 static lv_color_t selected_accent_color(const picker_wheel_data_t* data);
 static void refresh_highlight_box_color(picker_wheel_data_t* data);
 static void refresh_selected_accent(picker_wheel_data_t* data);
-static void create_fade(lv_obj_t* parent, bool top);
+static lv_obj_t* create_fade(lv_obj_t* parent, bool top);
+static const lv_image_dsc_t* fade_mask(int w, int h);
+static void apply_fade_mode(lv_obj_t* container, picker_wheel_data_t* data);
 static void theme_changed_cb(lv_event_t* e);
 static void picker_wheel_delete_cb(lv_event_t* e);
 static lv_text_align_t normalize_text_align(lv_text_align_t align);
@@ -198,8 +208,9 @@ lv_obj_t* picker_wheel_create(lv_obj_t* parent, const picker_wheel_props_t* prop
     lv_obj_set_size(bottom_spacer, ITEM_WIDTH, FADE_HEIGHT);
     lv_obj_clear_flag(bottom_spacer, LV_OBJ_FLAG_CLICKABLE);
     
-    create_fade(container, true);
-    create_fade(container, false);
+    data->fade_top = create_fade(container, true);
+    data->fade_bottom = create_fade(container, false);
+    apply_fade_mode(container, data);
 
     lv_obj_update_layout(data->scroll_area);
     set_selected_index(data, props->selected_index, false);
@@ -619,7 +630,7 @@ static void create_picker_item(lv_obj_t* parent, picker_wheel_data_t* data, int 
  * Create a fade over the top or bottom FADE_HEIGHT px of the picker: the theme background
  * color, opaque at the picker's edge and transparent towards its middle.
  */
-static void create_fade(lv_obj_t* parent, bool top) {
+static lv_obj_t* create_fade(lv_obj_t* parent, bool top) {
     lv_obj_t* fade = lv_obj_create(parent);
     lv_obj_remove_style_all(fade);
     lv_obj_set_size(fade, PICKER_WIDTH, FADE_HEIGHT);
@@ -629,6 +640,50 @@ static void create_fade(lv_obj_t* parent, bool top) {
     lv_obj_add_style(fade, ui_theme_get_style_bg_fade(), 0);
     lv_obj_set_style_bg_main_opa(fade, top ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
     lv_obj_set_style_bg_grad_opa(fade, top ? LV_OPA_TRANSP : LV_OPA_COVER, 0);
+    return fade;
+}
+
+/**
+ * The colour fades on the theme's background colour; over a theme background image, a transparent
+ * container and the rows faded by a mask instead. Follows the background on every theme change.
+ */
+static void apply_fade_mode(lv_obj_t* container, picker_wheel_data_t* data) {
+    const bool image = theme_background_has_image();
+    lv_obj_update_layout(data->scroll_area);   // its size, for the mask
+    if (image) lv_obj_set_style_bg_opa(container, LV_OPA_TRANSP, 0);
+    else lv_obj_remove_local_style_prop(container, LV_STYLE_BG_OPA, 0);
+    lv_obj_set_style_bitmap_mask_src(data->scroll_area,
+                                     image ? fade_mask(lv_obj_get_width(data->scroll_area),
+                                                       lv_obj_get_height(data->scroll_area)) : NULL, 0);
+    lv_obj_set_hidden(data->fade_top, image);
+    lv_obj_set_hidden(data->fade_bottom, image);
+}
+
+/**
+ * The same fades as an A8 mask for a @p w x @p h scroll area: transparent at its top and bottom
+ * edges, opaque from FADE_HEIGHT px in. Made once per size (one per orientation) and kept.
+ */
+static const lv_image_dsc_t* fade_mask(int w, int h) {
+    struct Mask { std::vector<uint8_t> alpha; lv_image_dsc_t dsc; };
+    static std::map<std::pair<int, int>, Mask> masks;   // map nodes keep their address
+    Mask& m = masks[{w, h}];
+    if (m.alpha.empty()) {
+        m.alpha.resize((size_t)w * h);
+        for (int y = 0; y < h; y++) {
+            const int edge = y < h - 1 - y ? y : h - 1 - y;
+            const uint8_t a = edge >= FADE_HEIGHT ? 255 : (uint8_t)(edge * 255 / FADE_HEIGHT);
+            memset(&m.alpha[(size_t)y * w], a, w);
+        }
+        m.dsc = {};
+        m.dsc.header.magic = LV_IMAGE_HEADER_MAGIC;
+        m.dsc.header.cf = LV_COLOR_FORMAT_A8;
+        m.dsc.header.w = w;
+        m.dsc.header.h = h;
+        m.dsc.header.stride = w;
+        m.dsc.data_size = m.alpha.size();
+        m.dsc.data = m.alpha.data();
+    }
+    return &m.dsc;
 }
 
 /**
@@ -754,6 +809,7 @@ static void theme_changed_cb(lv_event_t* e) {
 
     refresh_all_item_visuals(data);
     refresh_highlight_box_color(data);
+    apply_fade_mode(container, data);
 }
 
 static void encoder_key_cb(lv_event_t* e) {

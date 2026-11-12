@@ -7,6 +7,7 @@
 #include "tile.h"
 #include "../ui_design_tokens.h"
 #include "adaptive_text.h"
+#include "permissions.h"
 
 #include <algorithm>
 #include <cmath>
@@ -20,6 +21,10 @@
 #include <Tiles.h>
 /* The device's root object (defined in main.cpp). */
 extern std::shared_ptr<RootObject> root;
+
+/* Figma: a small padlock in the corner of a view-only tile */
+#define TILE_LOCK_PX        14
+#define TILE_LOCK_MARGIN_PX 6
 
 bool tile_type_parse(const std::string &s, tile_type_t &out)
 {
@@ -60,7 +65,7 @@ static void tile_clicked_cb(lv_event_t *e)
         case BLUETOOTH: tile_bluetooth_volume_open(t.name, t.binding); break;
         case STREAMING: tile_streaming_volume_open(t.name, t.binding, t.id); break;
         case OUTPUT_VOLUME: tile_output_volume_open(t.name, t.binding); break;
-        case INPUT: tile_input_open(t.name, t.binding); break;
+        case INPUT: tile_input_open(t.name, t.binding, t.id); break;
         default: break;
         }
         return;
@@ -84,8 +89,7 @@ lv_obj_t *tile_create(lv_obj_t *parent, tile_type_t type, const std::string &id,
     lv_obj_t *tile = lv_obj_create(parent);
     lv_obj_remove_style_all(tile);
     lv_obj_set_size(tile, w, h);
-    lv_obj_add_style(tile, ui_theme_get_style_bg(), 0);
-    lv_obj_set_style_bg_opa(tile, LV_OPA_COVER, 0);
+    /* transparent: tiles sit on the screen's background (the theme's colour or background image) */
     lv_obj_clear_flag(tile, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_clear_flag(tile, LV_OBJ_FLAG_CLICKABLE);
 
@@ -101,8 +105,18 @@ lv_obj_t *tile_create(lv_obj_t *parent, tile_type_t type, const std::string &id,
     }
     tile_remove_from_group(tile);
 
+    /* View only for the logged-in role: a lock in the corner, and no page. */
+    const bool viewOnly = perm_tile_level(type, id) < PERM_FULL;
+    if (viewOnly) {
+        lv_obj_t *lock = perm_lock_icon_create(tile, TILE_LOCK_PX);
+        lv_obj_add_flag(lock, LV_OBJ_FLAG_IGNORE_LAYOUT);
+        /* from the tile's corner, not its padded content area */
+        lv_obj_align(lock, LV_ALIGN_TOP_RIGHT, lv_obj_get_style_pad_right(tile, LV_PART_MAIN) - TILE_LOCK_MARGIN_PX,
+                     TILE_LOCK_MARGIN_PX - lv_obj_get_style_pad_top(tile, LV_PART_MAIN));
+    }
+
     /* Types that have a page open it when tapped. */
-    if (type == BLUETOOTH || type == STREAMING || type == OUTPUT_VOLUME || type == INPUT) {
+    if (!viewOnly && (type == BLUETOOTH || type == STREAMING || type == OUTPUT_VOLUME || type == INPUT)) {
         lv_obj_add_flag(tile, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_add_event_cb(tile, tile_clicked_cb, LV_EVENT_CLICKED, NULL);
         tileTaps.push_back({tile, lv_obj_get_screen(tile), type, id, name, binding});

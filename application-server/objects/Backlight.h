@@ -11,7 +11,8 @@
 //
 // "brightness" is a 0-100 percentage mapped onto that range. When "timeout"
 // is enabled the backlight is switched off after "timeoutSeconds" of UI
-// inactivity and restored on the next touch.
+// inactivity and restored on the next touch. sleepNow() switches it off right
+// away (the home screen's sleep icon), also until the next touch.
 class Backlight final : public LeafObject
 {
 public:
@@ -24,11 +25,16 @@ public:
   std::shared_ptr<BoolControl> timeoutPtr;
   std::shared_ptr<FloatControl> timeoutSecondsPtr;
 
+  void sleepNow();
+  bool isScreenOff() const { return screenOff; }
+
 private:
   bool locateDevice();
   bool applyPercent(float percent);
 
   std::string deviceDir; // e.g. /sys/class/backlight/backlight (empty until located)
   long maxBrightness = 0;
-  bool screenOff = false; // true while the inactivity timeout has the backlight off
+  bool screenOff = false; // true while the inactivity timeout or sleepNow() has the backlight off
+  bool asleep = false;    // off by sleepNow(): stays off until the next input, whatever the timeout
+  uint32_t lastInactiveMs = 0; // lv_display_get_inactive_time() on the previous tick: it drops on input
 };
