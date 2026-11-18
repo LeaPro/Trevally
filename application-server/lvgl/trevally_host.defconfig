@@ -31,6 +31,12 @@ CONFIG_LV_FONT_MONTSERRAT_18=y
 CONFIG_LV_FONT_MONTSERRAT_22=y
 CONFIG_LV_FONT_MONTSERRAT_28=y
 
+# Characters Satoshi doesn't have are drawn from TTF/OTF fonts at runtime (application-server
+# ui/font_fallback.h); right-to-left text and Arabic letter joining for Arabic and Hebrew.
+CONFIG_LV_USE_FREETYPE=y
+CONFIG_LV_USE_BIDI=y
+CONFIG_LV_USE_ARABIC_PERSIAN_CHARS=y
+
 # --- Host display/input backend ---
 CONFIG_LV_USE_SDL=y
 # CONFIG_LV_SDL_AUTO_BACKEND is not set

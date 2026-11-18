@@ -34,6 +34,7 @@
 #include "ui/components/qr_code.h"
 #include "ui/components/scroll_pane.h"
 #include "ui/components/theme_images.h"
+#include "ui/font_fallback.h"
 #include "ui/components/now_playing_ribbon.h"
 #include "ui/components/home_controls.h"
 #include "ui/components/playback_page.h"
@@ -991,6 +992,7 @@ void lvglUiShutdown()
 void lvglUiInit(boost::asio::io_context &io_context, std::shared_ptr<RootObject> root)
 {
   lv_init();
+  ui_font_fallback_init();   // characters Satoshi doesn't have (Chinese, Arabic, curly quotes, ...)
 
   // Match the Trevally target's physical panel so the simulator is
   // representative of the real device.

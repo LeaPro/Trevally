@@ -78,12 +78,12 @@ void ui_adaptive_text_set(lv_obj_t *label,
         lv_label_set_long_mode(label, desired_mode);
     }
 
+    /* The direction follows the text (LV_BASE_DIR_AUTO): left-to-right text scrolls left, Arabic / Hebrew right. */
+    lv_obj_set_style_base_dir(label, LV_BASE_DIR_AUTO, LV_PART_MAIN);
     if (use_scroll) {
-        lv_obj_set_style_base_dir(label, LV_BASE_DIR_RTL, LV_PART_MAIN);
         lv_obj_set_style_anim(label, ui_adaptive_text_get_marquee_anim(), LV_PART_MAIN);
         lv_obj_set_style_anim_duration(label, ADAPTIVE_TEXT_MARQUEE_DURATION_MS, LV_PART_MAIN);
     } else {
-        lv_obj_set_style_base_dir(label, LV_BASE_DIR_AUTO, LV_PART_MAIN);
         lv_obj_set_style_anim(label, NULL, LV_PART_MAIN);
     }
 

@@ -52,5 +52,9 @@ export ARCH=x86_64
   --desktop-file "$OUT/trevally.desktop" \
   --icon-file "$OUT/trevally.png"
 
+# The fallback fonts (ui/font_fallback.h), found at $APPDIR/usr/share/fonts/trevally when the AppImage runs.
+mkdir -p "$APPDIR/usr/share/fonts/trevally"
+cp -L /usr/share/fonts/trevally/* "$APPDIR/usr/share/fonts/trevally/"
+
 "$APPIMAGETOOL" "$APPDIR" "$OUT/Trevally-x86_64.AppImage"
 echo "Built $OUT/Trevally-x86_64.AppImage"

@@ -47,8 +47,20 @@ Follow the steps below once per machine.
 
 ```bash
 sudo apt install build-essential cmake python3 python3-venv ninja-build \
-  libsdl2-dev libboost-system-dev libboost-filesystem-dev \
-  liblmdb-dev libssl-dev libcurl4-openssl-dev pkg-config
+  libsdl2-dev libfreetype-dev libboost-system-dev libboost-filesystem-dev \
+  liblmdb-dev libssl-dev libcurl4-openssl-dev pkg-config fonts-dejavu-core unzip
+```
+
+The UI draws characters its Satoshi fonts don't have (Chinese, Arabic, Hebrew,
+Greek, Cyrillic, curly quotes, ...) from fonts in `/usr/share/fonts/trevally`
+(see `ui/font_fallback.h`; the Docker image and the firmware image set this up).
+Without them those characters show as boxes:
+
+```bash
+sudo mkdir -p /usr/share/fonts/trevally
+sudo ln -s /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf /usr/share/fonts/trevally/
+curl -fsSL -o /tmp/han.zip https://github.com/adobe-fonts/source-han-sans/releases/download/2.004R/SourceHanSansCN.zip
+sudo unzip -j /tmp/han.zip SubsetOTF/CN/SourceHanSansCN-Medium.otf -d /usr/share/fonts/trevally
 ```
 
 ### 2. Clone LVGL and build it natively
