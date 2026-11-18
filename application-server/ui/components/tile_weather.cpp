@@ -142,18 +142,24 @@ static lv_obj_t *temperature_create(lv_obj_t *parent, const std::string &number,
     lv_obj_set_style_pad_gap(row, ringGap, 0);
     tile_label(row, number, font, style);
 
-    lv_color_t color = lv_color_white();
-    lv_style_value_t textColor;
-    if (lv_style_get_prop(style, LV_STYLE_TEXT_COLOR, &textColor) == LV_STYLE_RES_FOUND)
-        color = textColor.color;
+    /* The ring is drawn in the digits' text colour. It has their style too, so a theme change (which reports
+     * the style changed) recolours it with them. */
     lv_obj_t *ring = tile_container(row);
+    lv_obj_add_style(ring, style, 0);
     lv_obj_set_size(ring, ringD, ringD);
     lv_obj_set_style_radius(ring, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_opa(ring, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(ring, ringStroke, 0);
     lv_obj_set_style_border_opa(ring, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_color(ring, color, 0);
     lv_obj_set_style_margin_top(ring, std::max(0, digitTop), 0);
+    auto recolor = [](lv_event_t *e) {
+        lv_obj_t *r = (lv_obj_t *)lv_event_get_target(e);
+        const lv_color_t c = lv_obj_get_style_text_color(r, LV_PART_MAIN);
+        if (!lv_color_eq(c, lv_obj_get_style_border_color(r, LV_PART_MAIN)))   /* setting it reports a change too */
+            lv_obj_set_style_border_color(r, c, 0);
+    };
+    lv_obj_add_event_cb(ring, recolor, LV_EVENT_STYLE_CHANGED, nullptr);
+    lv_obj_set_style_border_color(ring, lv_obj_get_style_text_color(ring, LV_PART_MAIN), 0);
     return row;
 }
 

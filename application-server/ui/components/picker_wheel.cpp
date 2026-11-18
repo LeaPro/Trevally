@@ -10,8 +10,8 @@
  * - Selected text: cyan (#5DE9FF)
  * - Normal text: white (#FAFAFA) in dark / black (#000000) in light - theme-aware
  * - Background: black (#000000) in dark / white (#FFFFFF) in light - theme-aware
- * - Top fade gradient: 196px height, background color (opaque) to transparent - theme-aware
- * - Bottom fade gradient: 196px height, transparent to background color (opaque) - theme-aware
+ * - Top fade gradient: 196px height (to the selected row), background color (opaque) to transparent - theme-aware
+ * - Bottom fade gradient: 196px height (from the selected row), transparent to background color (opaque) - theme-aware
  * 
  * Note: The fades are plain objects with a vertical style gradient whose two stops are the
  * theme background color at different opacities (ui_theme_get_style_bg_fade()). Over a theme
@@ -45,7 +45,10 @@
 #define ITEM_PITCH              (ITEM_HEIGHT + ITEM_SPACING)
 #define ITEM_RADIUS             8
 #define HIGHLIGHT_BORDER        2
-#define FADE_HEIGHT             196
+// The selected row's top, which is also how far the fades reach: the row is centred in the
+// picker, as scroll snapping (LV_SCROLL_SNAP_CENTER) centres rows after a drag. 196 in portrait
+// (Figma); in landscape the picker is shorter, so it's higher up.
+#define FADE_HEIGHT             ((PICKER_HEIGHT - ITEM_HEIGHT + 1) / 2)
 #define VISIBLE_ROWS            10
 #define ITEM_TEXT_PAD_X         24
 #define ACCESSORY_SLOT_WIDTH    40
