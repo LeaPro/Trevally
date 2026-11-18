@@ -23,7 +23,6 @@
  * panel and the progress block at its bottom. */
 #define PORTRAIT_ART_H        410
 #define PORTRAIT_INFO_Y       420    /* top of the text row */
-#define PORTRAIT_LOGO_BOTTOM  6
 #define LANDSCAPE_ART_W       498
 #define LANDSCAPE_PROGRESS_BOTTOM 21 /* from the bottom edge */
 
@@ -38,9 +37,6 @@
 #define PROGRESS_KNOB_OVERHANG ((PROGRESS_KNOB_PX - PROGRESS_BAR_H) / 2)   /* knob above / below the bar */
 #define PROGRESS_TIMES_GAP    8      /* between the bar and the times */
 #define PROGRESS_TRACK_OPA    ((lv_opa_t)31)   /* 12% */
-
-#define LOGO_W                78
-#define LOGO_H                24
 
 /* The control buttons sit in the four corners of the area under the text and progress rows. Portrait: the 434px bottom block
  * of the screen (top buttons 135 from its top, bottom buttons 57 from its bottom). Landscape: the right-hand panel (top buttons
@@ -327,10 +323,7 @@ void playback_page_create(lv_obj_t *screen, lv_obj_t *focus)
     lv_obj_set_size(p->controls, columnW, controlsH);
     lv_obj_set_pos(p->controls, columnX, displayH - controlsH);
     lv_obj_clear_flag(p->controls, LV_OBJ_FLAG_CLICKABLE);
-    if (!landscape) {
-        lv_obj_t *logo = UI_ICON_CREATE_DEFAULT(screen, UI_ICON_LOGO);
-        if (logo) lv_obj_set_pos(logo, (displayW - LOGO_W) / 2, displayH - PORTRAIT_LOGO_BOTTOM - LOGO_H);
-    }
+    if (landscape) nav_hide_logo(screen);   /* the progress block runs under the knob */
 
     p->timer = lv_timer_create(refresh, POLL_MS, p);
     lv_obj_add_event_cb(screen, [](lv_event_t *e) {

@@ -34,10 +34,6 @@ extern std::shared_ptr<RootObject> root;
 #define FOOTER_H                 98
 #define DATE_X                   30
 #define DATE_Y                   27
-#define LOGO_W                   78
-#define LOGO_H                   24
-#define PORTRAIT_LOGO_BOTTOM     6      /* gap between the logo and the bottom edge */
-#define LANDSCAPE_LOGO_BOTTOM    22
 
 struct HomeControls {
     lv_obj_t   *cast;
@@ -161,9 +157,10 @@ lv_obj_t *home_controls_create(lv_obj_t *parent, int w, int h)
     lv_obj_set_style_text_font(c->dateTime, &satoshi_medium_20, 0);
     lv_obj_set_pos(c->dateTime, DATE_X, footerY + DATE_Y);
 
+    /* centred in the panel, which is centred under the knob: where every other screen has it (nav_screen_create()) */
     lv_obj_t *logo = UI_ICON_CREATE_DEFAULT(area, UI_ICON_LOGO);
-    if (logo) lv_obj_set_pos(logo, (w - LOGO_W) / 2,
-                             h - (landscape ? LANDSCAPE_LOGO_BOTTOM : PORTRAIT_LOGO_BOTTOM) - LOGO_H);
+    if (logo) lv_obj_set_pos(logo, (w - UI_LOGO_W_PX) / 2,
+                             h - (landscape ? UI_LANDSCAPE_LOGO_BOTTOM_PX : UI_PORTRAIT_LOGO_BOTTOM_PX) - UI_LOGO_H_PX);
 
     lv_obj_t *sleep = UI_ICON_CREATE_DEFAULT(area, UI_ICON_SLEEP);
     if (sleep) {

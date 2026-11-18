@@ -6,6 +6,7 @@
 #include "level_gauge.h"
 #include "fader_units.h"
 #include "tile.h"
+#include "../nav.h"
 #include "../ui_design_tokens.h"
 
 #include <math.h>
@@ -131,6 +132,21 @@ static GaugeLayout gauge_layout(void)
     return L;
 }
 
+/* Whether the arc (centred on L, LEVEL_GAUGE_ARC_W wide inside its radius) runs over the LEA logo beneath the knob,
+ * as the anchored arc does in landscape, where it rings the knob. */
+static bool arc_covers_logo(const GaugeLayout &L)
+{
+    const lv_area_t logo = nav_logo_area();
+    const float r = L.radius - LEVEL_GAUGE_ARC_W / 2.0f, half = LEVEL_GAUGE_ARC_W / 2.0f;
+    for (int a = 0; a <= L.sweep; a++) {   /* LVGL angles: clockwise from 3 o'clock */
+        const float rad = (L.rotation + a) * (float)M_PI / 180.0f;
+        const float x = L.cx + r * cosf(rad), y = L.cy + r * sinf(rad);
+        if (x + half >= logo.x1 && x - half <= logo.x2 && y + half >= logo.y1 && y - half <= logo.y2)
+            return true;
+    }
+    return false;
+}
+
 static void place(lv_obj_t *obj, const Spot &s)
 {
     const int midX = lv_display_get_horizontal_resolution(nullptr) / 2;
@@ -159,6 +175,7 @@ lv_obj_t *level_gauge_create(lv_obj_t *parent, const std::string &leafPath, cons
     lv_arc_set_bg_angles(arc, 0, L.sweep);
     lv_arc_set_range(arc, 0, 1000);
     lv_arc_set_value(arc, (int32_t)(n.fill * 1000.0f));
+    if (arc_covers_logo(L)) nav_hide_logo(lv_obj_get_screen(parent));
 
     lv_obj_add_style(arc, ui_theme_get_style_bg_tertiary(), LV_PART_MAIN);
     lv_obj_set_style_arc_width(arc, LEVEL_GAUGE_ARC_W, LV_PART_MAIN);

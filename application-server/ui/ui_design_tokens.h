@@ -61,6 +61,15 @@ LV_FONT_DECLARE(satoshi_medium_140);
 #define UI_PAGINATION_ACTIVE_W_PX     14
 #define UI_PAGINATION_GAP_PX          4
 
+/* The LEA logo beneath the knob, on every screen whose content doesn't cover that spot (see nav.h). It is
+ * centred under the knob, this far above the display's bottom edge. The knob's centre is the middle of the
+ * panel's short side, and in landscape this far from the left edge (the middle of the 356px right-hand panel). */
+#define UI_LOGO_W_PX                  78
+#define UI_LOGO_H_PX                  24
+#define UI_PORTRAIT_LOGO_BOTTOM_PX    6
+#define UI_LANDSCAPE_LOGO_BOTTOM_PX   22
+#define UI_LANDSCAPE_KNOB_X_PX        676
+
 static inline bool ui_is_landscape(void)
 {
   return lv_display_get_horizontal_resolution(nullptr) > lv_display_get_vertical_resolution(nullptr);

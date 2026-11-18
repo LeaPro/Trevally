@@ -30,8 +30,16 @@ typedef nav_page_t nav_dest_t;
 /** Registers the main screen (the active one) as the home destination, with the object that takes encoder focus on it. */
 void nav_init(lv_obj_t *home_focus);
 
-/** Creates an empty themed screen. Build its widgets on .screen, then reach it with nav_goto() (destination) or nav_push() (page). */
+/** Creates an empty themed screen, with the LEA logo beneath the knob. Build its widgets on .screen, then reach it
+ *  with nav_goto() (destination) or nav_push() (page). */
 nav_page_t nav_screen_create();
+
+/** Removes the LEA logo nav_screen_create() put on @p screen: for content that covers the spot beneath the knob
+ *  (e.g. the playback page's progress bar in landscape). */
+void nav_hide_logo(lv_obj_t *screen);
+
+/** Where that logo is, in display coordinates. */
+lv_area_t nav_logo_area(void);
 
 void nav_push(const nav_page_t &page);   /* pages (push / replace / pop) switch instantly; only nav_goto animates */
 

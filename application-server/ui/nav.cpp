@@ -7,6 +7,7 @@
 #include "theme_images.h"
 #include "tile.h"
 #include "ui_design_tokens.h"
+#include "ui_icon_data.h"
 
 #include <vector>
 
@@ -51,7 +52,37 @@ nav_page_t nav_screen_create()
      * leaving edit mode turns rotation into focus navigation, so KEY events stop arriving. */
     lv_obj_clear_flag(page.focus, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_size(page.focus, 1, 1);
+
+    /* The LEA logo beneath the knob, where the home screen has it (home_controls.cpp); created first, so the page's
+     * widgets are drawn over it */
+    if (lv_obj_t *logo = UI_ICON_CREATE_DEFAULT(page.screen, UI_ICON_LOGO)) {
+        const lv_area_t area = nav_logo_area();
+        lv_obj_set_pos(logo, area.x1, area.y1);
+    }
     return page;
+}
+
+lv_area_t nav_logo_area(void)
+{
+    const int displayW = lv_display_get_horizontal_resolution(nullptr);
+    const int displayH = lv_display_get_vertical_resolution(nullptr);
+    lv_area_t area;
+    area.x1 = ui_is_landscape() ? UI_LANDSCAPE_KNOB_X_PX - UI_LOGO_W_PX / 2 : (displayW - UI_LOGO_W_PX) / 2;
+    area.y1 = displayH - (ui_is_landscape() ? UI_LANDSCAPE_LOGO_BOTTOM_PX : UI_PORTRAIT_LOGO_BOTTOM_PX) - UI_LOGO_H_PX;
+    area.x2 = area.x1 + UI_LOGO_W_PX - 1;
+    area.y2 = area.y1 + UI_LOGO_H_PX - 1;
+    return area;
+}
+
+void nav_hide_logo(lv_obj_t *screen)
+{
+    for (uint32_t i = 0; screen && i < lv_obj_get_child_count(screen); i++) {
+        lv_obj_t *child = lv_obj_get_child(screen, (int32_t)i);
+        if (lv_obj_check_type(child, &lv_image_class) && lv_image_get_src(child) == ui_icon_data[UI_ICON_LOGO]) {
+            lv_obj_delete(child);
+            return;
+        }
+    }
 }
 
 void nav_push(const nav_page_t &page)
