@@ -535,7 +535,7 @@ static void openAdvancedPage()
   lv_obj_add_style(body, ui_theme_get_style_text_primary(), 0);
   lv_obj_set_style_text_font(body, &satoshi_medium_24, 0);
   lv_obj_set_style_text_align(body, LV_TEXT_ALIGN_CENTER, 0);
-  lv_label_set_text(body, connected ? ("Scan the QR code to configure your CSTouch, or visit " + ip).c_str()
+  lv_label_set_text(body, connected ? ("Scan the QR code to configure your CS Glass, or visit " + ip).c_str()
                                     : "Please check your ethernet connection");
 
   if (connected)

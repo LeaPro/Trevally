@@ -101,7 +101,7 @@ void setup_page_set_ip(lv_obj_t *screen, const char *ip)
 
     lv_label_set_text(title, connected ? "Network Detected" : "No Network Detected");
     lv_obj_set_style_text_color(title, connected ? UI_COLOR_TEXT_SUCCESS : UI_COLOR_TEXT_ERROR, 0);
-    lv_label_set_text(body, connected ? ("Scan the QR code to configure your CSTouch, or visit " + address).c_str()
+    lv_label_set_text(body, connected ? ("Scan the QR code to configure your CS Glass, or visit " + address).c_str()
                                       : "Please check your ethernet connection");
     if (connected) {
         qr_code_set_text(qr, ("http://" + address).c_str());

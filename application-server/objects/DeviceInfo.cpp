@@ -34,10 +34,7 @@ DeviceInfo::DeviceInfo(string path, Object *parent) : LeafObject(path, parent)
   name = "serialNumber";         elements[name] = serialNumPtr            = std::make_shared<StringSensor>(path + "/" + name, this, "1234"/*default*/, 32/*maxLength*/, true/*publishAsControlFlag*/);
   name = "dateOfMfg";            elements[name] = dateOfMfgPtr            = std::make_shared<StringSensor>(path + "/" + name, this, ""/*default*/, 32/*maxLength*/, true/*publishAsControlFlag*/);
   name = "dateOfInstallation";   elements[name] = dateOfInstallationPtr   = std::make_shared<StringControl>(path + "/" + name, this, ""/*default*/, 32/*maxLength*/);
-  name = "hardwareID";           elements[name] = hardwareIDPtr           = std::make_shared<StringSensor>(path + "/" + name, this, ""/*default*/, 64/*maxLength*/, true/*publishAsControlFlag*/);
   name = "hardwareRevision";     elements[name] = hardwareRevisionPtr     = std::make_shared<StringSensor>(path + "/" + name, this, ""/*default*/, 64/*maxLength*/, true/*publishAsControlFlag*/);
-  name = "ampHardwareRevision";  elements[name] = ampHardwareRevisionPtr  = std::make_shared<StringSensor>(path + "/" + name, this, ""/*default*/, 64/*maxLength*/, true/*publishAsControlFlag*/);
-  name = "wifiHwSupport";        elements[name] = wifiHwSupportPtr        = std::make_shared<BoolSensor>(path + "/" + name, this, false/*default*/);
   name = "mfgTestModeControl";   elements[name] = mfgTestModeControlPtr   = std::make_shared<BoolControl>(path + "/" + name, this,  false/*default*/, false/*persistent*/);
   name = "mfgTestMode";          elements[name] = mfgTestModePtr          = std::make_shared<BoolSensor>(path + "/" + name, this, false/*default*/);
   name = "assetTagNumber";       elements[name] = assetTagNumberPtr       = std::make_shared<StringControl>(path + "/" + name, this, "Asset Tag ID"/*default*/, 64/*maxLength*/);

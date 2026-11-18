@@ -14,6 +14,6 @@
 #define MINOR_VER    0
 #define RELEASE_VER  0
 #define BUILD_VER    0
-#define RC_NUM    "RC1"
+#define RC_NUM    "dev"
 
 // 0.0.0.0-RC1 initial version number

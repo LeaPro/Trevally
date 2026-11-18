@@ -27,10 +27,7 @@ public:
   std::shared_ptr<StringSensor> serialNumPtr;
   std::shared_ptr<StringSensor> dateOfMfgPtr;
   std::shared_ptr<StringControl> dateOfInstallationPtr;
-  std::shared_ptr<StringSensor> hardwareIDPtr;
   std::shared_ptr<StringSensor> hardwareRevisionPtr;
-  std::shared_ptr<StringSensor> ampHardwareRevisionPtr;
-  std::shared_ptr<BoolSensor> wifiHwSupportPtr;
   std::shared_ptr<BoolControl> mfgTestModeControlPtr;
   std::shared_ptr<BoolSensor> mfgTestModePtr;
   std::shared_ptr<StringControl> assetTagNumberPtr;
