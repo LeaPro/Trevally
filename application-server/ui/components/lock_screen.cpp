@@ -139,7 +139,7 @@ static void pin_show_digits()
 {
     if (!pinDisplay) return;
     lv_obj_set_style_text_color(pinDisplay, ui_get_brand_color(), 0);
-    lv_label_set_text(pinDisplay, pinDigits.c_str());
+    lv_label_set_text(pinDisplay, std::string(pinDigits.size(), '*').c_str());   /* masked: never show the PIN */
 }
 
 static void pin_message_done_cb(lv_timer_t *)

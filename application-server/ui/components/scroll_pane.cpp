@@ -113,6 +113,8 @@ static std::vector<json> sp_read_screens()
                     id.get<std::string>().c_str());
             continue;
         }
+        if (screen_hidden_for_role(*it))
+            continue;   /* the logged-in role may see none of its tiles: skipped, not shown empty */
         if ((int)out.size() >= SCROLL_MAX_SCREENS) {
             fprintf(stderr, "scroll_pane: more than %d screens configured, ignoring the rest\n",
                     SCROLL_MAX_SCREENS);

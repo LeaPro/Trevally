@@ -117,6 +117,26 @@ std::string screen_name(const json &screenConfig)
     return jsonString(screenConfig, "name");
 }
 
+bool screen_hidden_for_role(const json &screenConfig)
+{
+    auto tiles = std::dynamic_pointer_cast<Tiles>(::root->leafFromPath("/tiles"));
+    auto orderIt = screenConfig.find("tileOrder");
+    if (!tiles || orderIt == screenConfig.end() || !orderIt->is_array()) return false;
+
+    const json tilesConfig = tiles->configPtr->get();
+    bool anyTile = false;
+    for (const auto &tileId : *orderIt) {
+        if (!tileId.is_string()) continue;
+        auto tileIt = tilesConfig.find(tileId.get<std::string>());
+        tile_type_t type;
+        if (tileIt == tilesConfig.end() || !tileIt->is_object() || !tile_type_parse(jsonString(*tileIt, "type"), type))
+            continue;   /* not shown anyway (see readTiles()) */
+        anyTile = true;
+        if (perm_tile_level(type, tileId.get<std::string>()) != PERM_HIDDEN) return false;
+    }
+    return anyTile;
+}
+
 lv_obj_t *screen_create(lv_obj_t *parent, const json &screenConfig)
 {
     lv_obj_t *screen = lv_obj_create(parent);

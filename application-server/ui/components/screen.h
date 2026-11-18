@@ -33,4 +33,8 @@ lv_obj_t *screen_create(lv_obj_t *parent, const json &screenConfig);
 /** The screen's display name ("" if unset). */
 std::string screen_name(const json &screenConfig);
 
+/** True if the screen has tiles but the logged-in role may see none of them (see permissions.h; roles grant access
+ *  per tile): it isn't shown at all. A screen with no tiles configured is not hidden. */
+bool screen_hidden_for_role(const json &screenConfig);
+
 #endif /* SCREEN_COMPONENT_H */
