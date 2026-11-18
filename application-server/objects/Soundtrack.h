@@ -1,6 +1,8 @@
 #pragma once
 #include <object.h>
+#include <chrono>
 #include <cstdint>
+#include <future>
 #include <map>
 
 #ifndef SOUNDTRACK_ENABLED
@@ -37,6 +39,8 @@ private:
   void syncPairingResult();
   void syncTroubles();
   void syncMetadata();
+  void syncAlbumArt();
+  void clearTrack();
   void handleControls();
   const char *authStatusToString(int status) const;
   const char *sourceTypeToString(int type) const;
@@ -45,6 +49,7 @@ private:
   std::shared_ptr<BoolSensor> sdkReadyPtr;
   std::shared_ptr<BoolSensor> websiteReachablePtr;
   std::shared_ptr<BoolSensor> pairedPtr;
+  std::shared_ptr<BoolControl> lastPairedPtr;
   std::shared_ptr<StringSensor> authStatusPtr;
   std::shared_ptr<StringSensor> deviceIdPtr;
   std::shared_ptr<BoolSensor> isPlayingPtr;
@@ -63,6 +68,13 @@ private:
   std::shared_ptr<JsonSensor> soundzonePtr;
   std::shared_ptr<JsonSensor> currentSourcePtr;
   std::shared_ptr<JsonSensor> currentTrackPtr;
+  std::shared_ptr<StringSensor> trackTitlePtr;
+  std::shared_ptr<StringSensor> trackArtistPtr;
+  std::shared_ptr<StringSensor> trackAlbumPtr;
+  std::shared_ptr<UInt32Sensor> trackDurationPtr;
+  std::shared_ptr<UInt32Sensor> trackPositionPtr;
+  std::shared_ptr<StringSensor> trackAlbumArtPtr;
+  std::shared_ptr<StringSensor> trackAlbumArtUrlPtr;
   std::shared_ptr<JsonSensor> libraryPtr;
   std::shared_ptr<JsonSensor> troublesPtr;
   std::shared_ptr<StringSensor> lastErrorPtr;
@@ -79,7 +91,16 @@ private:
   splayer_t *splayer = nullptr;
   bool sdkInitialized = false;
   bool restorePlayStatePending = false;
+  std::string albumArtUri;                   // album art URI of the current track (an https URL on the Soundtrack CDN)
+  std::string albumArtFile;                  // published album art file; empty when none
+  bool albumArtPending = false;              // the album art for albumArtUri is still to be downloaded and published
+  int albumArtAttempts = 0;
+  std::future<std::string> albumArtDownload; // worker downloading albumArtDownloadUri; result is the file or empty
+  std::string albumArtDownloadUri;
+  std::chrono::steady_clock::time_point lastAlbumArtAttempt{};
   bool wasEnabled = false;
+  std::future<bool> reachabilityProbe;
+  std::chrono::steady_clock::time_point lastReachabilityProbe{};
   bool wasPaired = false;
   bool libraryRefreshNeeded = true;
   bool libraryFetchInProgress = false;
