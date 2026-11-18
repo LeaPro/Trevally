@@ -3,7 +3,8 @@
 #include <string>
 
 // Screensaver settings from the web UI. When "enabled", the screensaver starts after "timeoutSeconds" of UI
-// inactivity. "type" is "background-logo", "date-time" or "weather"; "showStreamingInfo" adds what's playing.
+// inactivity. "type" is "background-logo", "date-time" or "weather"; "showStreamingInfo" adds what's playing;
+// "showAnalogClock" draws the date-time screensaver's clock hands.
 class Screensaver final : public LeafObject
 {
 public:
@@ -13,4 +14,5 @@ public:
   std::shared_ptr<UInt32Control> timeoutSecondsPtr;
   std::shared_ptr<StringControl> typePtr;
   std::shared_ptr<BoolControl> showStreamingInfoPtr;
+  std::shared_ptr<BoolControl> showAnalogClockPtr;
 };

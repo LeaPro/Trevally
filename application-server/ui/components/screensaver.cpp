@@ -4,13 +4,16 @@
  */
 
 #include "screensaver.h"
+#include "adaptive_text.h"
 #include "album_art.h"
 #include "audio_source.h"
 #include "theme_images.h"
+#include "../nav.h"
 #include "tile.h"
 #include "../ui_design_tokens.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <ctime>
 #include <memory>
@@ -97,6 +100,12 @@ static std::string screensaverType()
     return type == "weather" || type == "date-time" ? type : std::string("background-logo");
 }
 
+static bool showAnalogClock()
+{
+    auto s = leaf<Screensaver>("/screensaver");
+    return s && s->showAnalogClockPtr->get();
+}
+
 static bool showStreamingInfo()
 {
     auto s = leaf<Screensaver>("/screensaver");
@@ -107,8 +116,9 @@ std::string screensaver_signature()
 {
     const std::string type = screensaverType();
     std::string sig = type + (ui_is_landscape() ? "|landscape" : "|portrait");
+    if (type == "date-time" && showAnalogClock()) sig += "|clock";
     for (lv_color_t c : {ui_get_background_color(), ui_get_bg_secondary_color(), ui_get_text_primary_color(),
-                         ui_get_text_secondary_color(), ui_get_icon_primary_color()}) {
+                         ui_get_text_secondary_color(), ui_get_icon_primary_color(), ui_get_brand_color()}) {
         char hex[8];
         snprintf(hex, sizeof(hex), "|%06x", (unsigned)lv_color_to_u32(c) & 0xFFFFFF);
         sig += hex;
@@ -140,9 +150,27 @@ static Layout layout()
             535 - PAD_PX - STREAM_H_PX, 535 - 2 * PAD_PX - STREAM_H_PX};
 }
 
+/* The date-time clock hands (Figma "Clock"): they turn about the knob's centre (the Figma "Knob": 282px,
+ * centred horizontally, top at y=535) and run out from under it. In landscape the knob is on the right, and 12
+ * o'clock stays up. Drawn in the theme's icon colour, the seconds hand in its brand colour. */
+#define KNOB_CENTRE_ALONG_PX   676   /* from the panel's top in portrait, from the left in landscape */
+#define KNOB_CENTRE_ACROSS_PX  240
+#define CLOCK_TICK_MS          100
+enum { HAND_SECONDS, HAND_HOUR, HAND_MINUTE, HAND_COUNT };   /* bottom to top, as in Figma */
+static const int HAND_LENGTH[HAND_COUNT] = {557, 212, 318};
+static const int HAND_WIDTH[HAND_COUNT]  = {3, 6, 6};
+
+struct Hand {
+    lv_obj_t *line = nullptr;
+    lv_point_precise_t points[2];   /* lv_line keeps a pointer to them */
+};
+
 struct Saver {
     std::string type;
     lv_timer_t *timer = nullptr;
+    lv_timer_t *clockTimer = nullptr;   /* date-time */
+    Hand hands[HAND_COUNT];
+    int shownSecond = -1;
     lv_obj_t *topLabel = nullptr;       /* weather / date-time */
     lv_obj_t *iconHolder = nullptr;     /* weather */
     lv_obj_t *condition = nullptr;
@@ -166,6 +194,52 @@ static lv_obj_t *label(lv_obj_t *parent, const lv_font_t *font, lv_color_t color
         lv_label_set_long_mode(l, LV_LABEL_LONG_MODE_DOTS);
     }
     return l;
+}
+
+/* Points @p hand at @p degrees (clockwise from 12 o'clock). The line object only covers the hand, so a tick
+ * redraws just the area the hand leaves and enters. */
+static void aimHand(Hand &hand, int which, float degrees)
+{
+    const bool landscape = ui_is_landscape();
+    const float px = landscape ? KNOB_CENTRE_ALONG_PX : KNOB_CENTRE_ACROSS_PX;
+    const float py = landscape ? KNOB_CENTRE_ACROSS_PX : KNOB_CENTRE_ALONG_PX;
+    const float rad = degrees * (float)M_PI / 180.0f;
+    const float tx = px + HAND_LENGTH[which] * sinf(rad), ty = py - HAND_LENGTH[which] * cosf(rad);
+    const int pad = HAND_WIDTH[which];   /* room for the round caps */
+    const int x0 = (int)floorf(std::min(px, tx)) - pad, y0 = (int)floorf(std::min(py, ty)) - pad;
+    const int x1 = (int)ceilf(std::max(px, tx)) + pad, y1 = (int)ceilf(std::max(py, ty)) + pad;
+    hand.points[0] = {px - x0, py - y0};
+    hand.points[1] = {tx - x0, ty - y0};
+    lv_obj_set_pos(hand.line, x0, y0);
+    lv_obj_set_size(hand.line, x1 - x0, y1 - y0);
+    lv_line_set_points(hand.line, hand.points, 2);
+}
+
+static void tickClock(Saver *s)
+{
+    const time_t now = ::time(nullptr);
+    struct tm local;
+    localtime_r(&now, &local);
+    if (local.tm_sec == s->shownSecond) return;
+    s->shownSecond = local.tm_sec;
+    aimHand(s->hands[HAND_SECONDS], HAND_SECONDS, local.tm_sec * 6.0f);
+    aimHand(s->hands[HAND_MINUTE], HAND_MINUTE, (local.tm_min + local.tm_sec / 60.0f) * 6.0f);
+    aimHand(s->hands[HAND_HOUR], HAND_HOUR, (local.tm_hour % 12 + local.tm_min / 60.0f) * 30.0f);
+}
+
+static void buildClock(lv_obj_t *parent, Saver *s)
+{
+    for (int i = 0; i < HAND_COUNT; i++) {
+        lv_obj_t *line = lv_line_create(parent);
+        lv_obj_set_clickable(line, false);
+        lv_obj_set_style_line_width(line, HAND_WIDTH[i], 0);
+        lv_obj_set_style_line_rounded(line, true, 0);
+        lv_obj_set_style_line_color(line, i == HAND_SECONDS ? ui_get_brand_color() : ui_get_icon_primary_color(), 0);
+        s->hands[i].line = line;
+    }
+    tickClock(s);
+    s->clockTimer = lv_timer_create([](lv_timer_t *t) { tickClock((Saver *)lv_timer_get_user_data(t)); },
+                                    CLOCK_TICK_MS, s);
 }
 
 static void refresh(Saver *s)
@@ -235,14 +309,16 @@ static void refresh(Saver *s)
         }
     }
     if (stream) {
+        /* one line each: text that doesn't fit scrolls (adaptive_text.h), as on the now-playing ribbon */
         const std::string artist = audio_source_text(source, "trackArtist");
+        lv_obj_update_layout(s->stream);   /* the labels' widths, which decide whether the text fits */
         if (title != s->shownTitle) {
             s->shownTitle = title;
-            lv_label_set_text(s->title, title.c_str());
+            ui_adaptive_text_set(s->title, title.c_str(), 1);
         }
         if (artist != s->shownArtist) {
             s->shownArtist = artist;
-            lv_label_set_text(s->artist, artist.c_str());
+            ui_adaptive_text_set(s->artist, artist.c_str(), 1);
         }
     }
 }
@@ -349,6 +425,7 @@ void screensaver_build(lv_obj_t *parent)
         lv_image_set_src(glow, ui_is_landscape() ? &screensaver_glow_landscape : &screensaver_glow_portrait);
         lv_obj_set_style_image_recolor(glow, glowTint(), 0);
         lv_obj_set_style_image_recolor_opa(glow, LV_OPA_COVER, 0);
+        if (s->type == "date-time" && showAnalogClock()) buildClock(rootObj, s);   /* over the glow, under the text */
     }
 
     lv_obj_t *column = tile_container(rootObj);
@@ -366,10 +443,19 @@ void screensaver_build(lv_obj_t *parent)
     }
     s->stream = streamBlock(column, s, L, onImage);
 
+    /* The LEA logo beneath the knob, where every other screen has it (nav_logo_area()); white over a background
+     * image, like the text there */
+    if (lv_obj_t *logo = UI_ICON_CREATE_DEFAULT(rootObj, UI_ICON_LOGO)) {
+        const lv_area_t area = nav_logo_area();
+        lv_obj_set_pos(logo, area.x1, area.y1);
+        if (onImage) lv_obj_set_style_image_recolor(logo, lv_color_hex(COLOR_ON_IMAGE), 0);
+    }
+
     s->timer = lv_timer_create([](lv_timer_t *t) { refresh((Saver *)lv_timer_get_user_data(t)); }, REFRESH_MS, s);
     lv_obj_add_event_cb(rootObj, [](lv_event_t *e) {
         Saver *s = (Saver *)lv_event_get_user_data(e);
         lv_timer_delete(s->timer);
+        if (s->clockTimer) lv_timer_delete(s->clockTimer);
         delete s;
     }, LV_EVENT_DELETE, s);
     refresh(s);
