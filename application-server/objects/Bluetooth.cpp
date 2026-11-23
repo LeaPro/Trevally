@@ -164,8 +164,9 @@ Bluetooth::Bluetooth(std::string path, Object *parent) : LeafObject(path, parent
   // true: disconnect the connectedDevice, if any (it stays paired); resets to false right away
   name = "disconnectDevice"; elements[name] = disconnectDevicePtr = std::make_shared<BoolControl>(path + "/" + name, this, false/*default*/, false/*persist*/);
   // Volume of the connected phone's A2DP stream (BlueALSA PCM volume, which BlueALSA also syncs with the phone via AVRCP).
-  // Changes made here are applied to the stream and vice versa.
-  name = "volume"; elements[name] = volumePtr = std::make_shared<UInt32Control>(path + "/" + name, this, 0, 100, 0, "percent", false/*persist*/);
+  // Changes made here are applied to the stream and vice versa. Persisted, so the last level shows while no phone is
+  // connected; a connecting phone's stream level (BlueALSA's --initial-volume, or the level the phone restores) replaces it.
+  name = "volume"; elements[name] = volumePtr = std::make_shared<UInt32Control>(path + "/" + name, this, 0, 100, 25, "percent");
   name = "pairedDevices"; elements[name] = pairedDevicesPtr = std::make_shared<StringSensor>(path + "/" + name, this, ""/*default*/, 1024/*maxLength*/);
   // Devices found by the last scan, "Name (MAC), ..."; refreshed while scan is on
   name = "discoveredDevices"; elements[name] = discoveredDevicesPtr = std::make_shared<StringSensor>(path + "/" + name, this, ""/*default*/, 1024/*maxLength*/);
