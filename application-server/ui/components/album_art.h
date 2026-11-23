@@ -17,10 +17,11 @@
 /**
  * @brief Creates a @p w x @p h album art box in @p parent.
  *
- * The image fills the box keeping its aspect ratio (centre-cropped).
+ * The image is scaled to fit inside the box keeping its aspect ratio (never cropped).
  *
  * @param radius     corner radius of the box (the image is clipped to it)
+ * @param align      where the image sits in the box when their aspect ratios differ
  */
-lv_obj_t *album_art_create(lv_obj_t *parent, int w, int h, int radius);
+lv_obj_t *album_art_create(lv_obj_t *parent, int w, int h, int radius, lv_align_t align = LV_ALIGN_CENTER);
 
 #endif /* ALBUM_ART_H */

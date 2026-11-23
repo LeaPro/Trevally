@@ -289,7 +289,8 @@ void playback_page_create(lv_obj_t *screen, lv_obj_t *focus)
 
     const int artW = landscape ? LANDSCAPE_ART_W : displayW;
     const int artH = landscape ? displayH : PORTRAIT_ART_H;
-    lv_obj_t *art = album_art_create(screen, artW, artH, 0);
+    /* landscape: flush with the screen's left edge, any spare width goes toward the text */
+    lv_obj_t *art = album_art_create(screen, artW, artH, 0, landscape ? LV_ALIGN_LEFT_MID : LV_ALIGN_CENTER);
     lv_obj_align(art, LV_ALIGN_TOP_LEFT, 0, 0);
     back_button_create(screen);
     volume_overlay_create(p, screen, artW, artH);
