@@ -1,5 +1,6 @@
 #include "objects.h"
 #include "AlbumArtFiles.h"
+#include "ExternalServiceName.h"
 #include <Common.h>
 #include <cassert>
 #include <cstring>
@@ -98,15 +99,6 @@ const char *chooseCacheDir()
   return "/tmp/soundtrack-cache";
 }
 
-std::string chooseVendorDeviceName()
-{
-  char hostname[256] = {0};
-  if (gethostname(hostname, sizeof(hostname) - 1) == 0 && hostname[0] != '\0')
-  {
-    return std::string(hostname);
-  }
-  return "trevally-player";
-}
 }
 
 bool Soundtrack::initializeSdk()
@@ -141,7 +133,7 @@ bool Soundtrack::initializeSdk()
   }
 
   splayer_config_t config = {SPLAYER_SDK_VERSION};
-  const std::string vendorDeviceName = chooseVendorDeviceName();
+  const std::string vendorDeviceName = externalServiceName();
   config.audio_api_callbacks = audioCallbacks;
   config.diskcache_dir = chooseCacheDir();
   config.diskcache_max_mb = 1024;

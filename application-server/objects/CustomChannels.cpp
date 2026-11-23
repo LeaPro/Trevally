@@ -1,6 +1,7 @@
 #include "objects.h"
 #include "CustomChannelsClient.h"
 #include "AlbumArtFiles.h"
+#include "ExternalServiceName.h"
 #include <Common.h>
 
 #include <csignal>
@@ -56,9 +57,10 @@ namespace {
     }
     return "trevally-player";
   }
+  // The identifier stays the hostname: a new one would register the panel as another listener.
   std::string chooseDisplayName()
   {
-    return chooseIdentifier();
+    return externalServiceName();
   }
 }
 
