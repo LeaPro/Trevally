@@ -1,7 +1,8 @@
 /**
  * @file tile_input.cpp
  * @brief Input tile: title, the active state's name, and its volume (the state's fader, see InputFaders.h).
- *        The binding is a /leaInput config uuid. "-" while there is no active state / it has no volume control.
+ *        The binding is a /leaInput config uuid. The state name is "-" while there is no active state; the speaker
+ *        and level row is blank while the active state has no volume control.
  *
  *        Tapping it opens the States page: a picker of the binding's states (stateOrder), the active one (last
  *        applied from here, /leaInput/active) checked. Choosing a state applies it (selects its sources on its
@@ -361,15 +362,20 @@ void tile_input_build(lv_obj_t *root, const std::string &name,
     /* Follows the active state, its name and level (the config and /leaInput/active can change any time). */
     auto shownState = std::make_shared<std::string>("-");
     auto shownLevel = std::make_shared<std::string>("-");
-    auto refresh = [stateLabel, stateFont, stateMaxW, levelLabel, binding, shownState, shownLevel]() {
+    auto refresh = [stateLabel, stateFont, stateMaxW, row, levelLabel, binding, shownState, shownLevel]() {
         std::string stateText = "-", levelText = "-";
+        bool hasVolume = false;
         State state;
         if (find_state(binding, active_state(binding), state))
         {
             stateText = state.name;
-            if (state.hasVolume())
+            hasVolume = state.hasVolume();
+            if (hasVolume)
                 levelText = fader_level_text(fadersLeaf, InputStates::stateFader(state));
         }
+        /* no speaker and level unless the active state has volume control; transparent rather than hidden so
+         * the state name keeps its place */
+        lv_obj_set_style_opa(row, hasVolume ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
         if (stateText != *shownState)
         {
             *shownState = stateText;
