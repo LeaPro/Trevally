@@ -8,6 +8,7 @@
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -84,7 +85,8 @@ private:
   void applyPlayNowResponse(const WorkerResponse &response);
 
   void runAutomation();
-
+  void syncTrackElements();
+  void startAlbumArtDownload(const std::string &url, const std::string &fallbackUrl);
   bool isAuthenticated() const;
   bool setMixerVolume(uint32_t percent);
   void setError(const std::string &msg);
@@ -94,6 +96,11 @@ private:
   std::shared_ptr<StringSensor> authUrlPtr;
   std::shared_ptr<JsonSensor> channelsPtr;
   std::shared_ptr<JsonSensor> nowPlayingPtr;
+  std::shared_ptr<StringSensor> trackTitlePtr;
+  std::shared_ptr<StringSensor> trackArtistPtr;
+  std::shared_ptr<StringSensor> trackAlbumPtr;
+  std::shared_ptr<StringSensor> trackAlbumArtPtr;
+  std::shared_ptr<StringSensor> trackAlbumArtUrlPtr;
   std::shared_ptr<BoolSensor> isPlayingPtr;
   std::shared_ptr<BoolSensor> websiteReachablePtr;
   std::shared_ptr<BoolControl> enabledPtr;
@@ -135,7 +142,21 @@ private:
   std::chrono::steady_clock::time_point lastVolumeRestoreAttemptAt{};
   std::chrono::steady_clock::time_point lastWebsiteReachabilityCheckAt{};
   bool lastWebsiteReachable = false;
+  bool websiteReachabilityKnown = false;
+  std::future<bool> websiteReachabilityProbe;
 
+  // Album art: the album art URL of the track is downloaded to a local file on a worker thread (LVGL loads files, not URLs)
+  struct AlbumArtDownload
+  {
+    std::string url;  // what was requested
+    std::string fetchedUrl; // what file was downloaded from: url, or the fallback when url failed
+    std::string file; // downloaded file; empty on failure
+  };
+  std::future<AlbumArtDownload> albumArtDownload;
+  std::string albumArtShownUrl;  // URL the published trackAlbumArt file belongs to
+  std::string albumArtShownFetchedUrl; // URL the published trackAlbumArt file was downloaded from (published as trackAlbumArtUrl)
+  std::string albumArtShownFile;
+  std::chrono::steady_clock::time_point albumArtRetryAt{};
   mutable std::mutex workerMutex;
   std::condition_variable workerCv;
   std::thread workerThread;

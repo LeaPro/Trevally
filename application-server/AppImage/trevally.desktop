@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Trevally
+Exec=application-server
+Icon=trevally
+Categories=Utility;
+Terminal=true

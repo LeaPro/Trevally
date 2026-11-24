@@ -1,4 +1,5 @@
 #include "objects.h"
+#include "AmpLinks.h"
 
 using std::string;
 using std::map;
@@ -30,7 +31,32 @@ Discovery::~Discovery()
 
 void Discovery::update(bool sensorsOnly, bool refreshVolatileElements)
 {
-  macString = "ba:be:fa:ce:de:ad:be:ef";
-  modelIDString = "modelID";
-  serialNumberString = "serialNumber";
+  // amps found / gone / moved: AmpLinks connects to newly found ones right away rather than on its next retry
+  if (auto devices = std::dynamic_pointer_cast<StringSensor>(elements["devices"]))
+  {
+    if (devices->get() != lastDevices)
+    {
+      lastDevices = devices->get();
+      AmpLinks::instance().discoveryChanged();
+    }
+  }
+
+  auto devInfo = std::dynamic_pointer_cast<DeviceInfo>(getRoot()->leafFromPath("/deviceInfo"));
+  auto ethernet = std::dynamic_pointer_cast<Ethernet>(getRoot()->leafFromPath("/network/ethernet"));
+  if (ethernet && !ethernet->macPtr->get().empty())
+    macString = ethernet->macPtr->get();
+  if (devInfo)
+  {
+    modelIDString = devInfo->modelIdPtr->get();
+    serialNumberString = devInfo->serialNumPtr->get();
+  }
+}
+
+void Discovery::requestAnnouncements()
+{
+  // flag our next broadcasts with requestInfo (which makes devices restart their fast announcing) and send the
+  // first one now instead of on our own, possibly slow, broadcast schedule
+  broadcaster->Restart();
+  broadcaster->SendRequests();
+  broadcaster->Broadcast();
 }
